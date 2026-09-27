@@ -15,6 +15,9 @@ workflows:
         - pattern: "fix/codemagic-arm64-m2"
           include: true
           source: true
+        - pattern: "fix/arm64-m2-codemagic"
+          include: true
+          source: true
         - pattern: "main"
           include: true
           source: true
