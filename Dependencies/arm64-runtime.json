@@ -5,5 +5,10 @@
   "alpineRelease": "3.24",
   "rootfsUrl": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.0-aarch64.tar.gz",
   "rootfsSha256": "4b8cd66a6688b2a87276c39843ed89c3a06d9534fc6a5823c586aff2696c1f2a",
-  "codexTarget": "aarch64-unknown-linux-musl"
+  "codexTarget": "aarch64-unknown-linux-musl",
+  "apkTools": {
+    "repository": "https://github.com/alpinelinux/apk-tools.git",
+    "revision": "44dcdfc255c26a4e19a4a27f66a54169cce5ca72",
+    "version": "3.0.8"
+  }
 }
