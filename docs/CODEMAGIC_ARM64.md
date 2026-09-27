@@ -21,8 +21,9 @@ The workflow performs the complete chain on `mac_mini_m2`:
 
 The workflow is configured to run on pushes to `fix/codemagic-arm64-m2` for
 validation and on `main` after merge. It also remains selectable manually in
-Codemagic. The build artifacts include the unsigned IPA, rootfs archive and
-rootfs SHA-256.
+Codemagic. A normal commit to the validation branch is intentionally used to
+exercise the webhook path before merge. The build artifacts include the
+unsigned IPA, rootfs archive and rootfs SHA-256.
 
 The ARM64 bundle identifier remains `com.joshuasyson.CodexPad.arm64`, keeping
 it separate from the existing i686 install. No JIT/MAP_JIT entitlement is
