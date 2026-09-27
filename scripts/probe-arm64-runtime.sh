@@ -5,7 +5,7 @@ set -euo pipefail
 : "${ARM64_ROOTFS:?Set ARM64_ROOTFS to a packaged AArch64 .tar.gz}"
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 source_dir="$project_root/upstream/ios-linuxkit"
-expected="$(jq -r '.arm64Runtime.revision' "$project_root/Dependencies/upstreams.json")"
+expected="$(jq -r '.revision' "$project_root/Dependencies/arm64-runtime.json")"
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$expected" || {
     echo 'ARM64 emulator is not at the pinned revision' >&2; exit 1;
 }

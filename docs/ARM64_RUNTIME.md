@@ -8,7 +8,7 @@ into that target and call it an ARM64 port. The SwiftUI client, i686 runtime,
 Codex revision, and existing CI jobs remain unchanged.
 
 The source of truth for the ARM64 candidate and rootfs is
-`Dependencies/upstreams.json`. `upstream/ios-linuxkit` is pinned to
+`Dependencies/arm64-runtime.json`. `upstream/ios-linuxkit` is pinned to
 `rcarmo/ios-linuxkit@61719f8177499f789fc2f7f421ea919ac7780608` (v2.1.3).
 It is a separate submodule because its AArch64 instruction model, syscall ABI,
 VDSO, memory structures, fakefs, and kernel are not interchangeable with this

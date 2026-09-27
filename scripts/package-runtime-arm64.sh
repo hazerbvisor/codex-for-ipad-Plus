@@ -4,13 +4,14 @@ set -euo pipefail
 
 : "${OUTPUT_ROOTFS:?Set OUTPUT_ROOTFS to the intended .tar.gz path}"
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-config="$project_root/Dependencies/upstreams.json"
-release="$(jq -r '.arm64Runtime.alpineRelease' "$config")"
-url="$(jq -r '.arm64Runtime.rootfsUrl' "$config")"
-base_sha="$(jq -r '.arm64Runtime.rootfsSha256' "$config")"
-revision="$(jq -r '.arm64Runtime.revision' "$config")"
-target="$(jq -r '.arm64Runtime.codexTarget' "$config")"
-codex_revision="$(jq -r '.codex.revision' "$config")"
+config="$project_root/Dependencies/arm64-runtime.json"
+release="$(jq -r '.alpineRelease' "$config")"
+url="$(jq -r '.rootfsUrl' "$config")"
+base_sha="$(jq -r '.rootfsSha256' "$config")"
+revision="$(jq -r '.revision' "$config")"
+target="$(jq -r '.codexTarget' "$config")"
+codex_config="$project_root/Dependencies/upstreams.json"
+codex_revision="$(jq -r '.codex.revision' "$codex_config")"
 [[ "$release" == 3.24 && "$target" == aarch64-unknown-linux-musl ]]
 
 mkdir -p "$(dirname -- "$OUTPUT_ROOTFS")"
