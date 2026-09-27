@@ -1,43 +1,65 @@
 # Codemagic ARM64 build and device validation
 
-This branch supplies two **manual** workflows in `codemagic.yaml`. They do
-not trigger GitHub Actions or publish to an app store. Add this GitHub
-repository to Codemagic and select `feature/arm64-runtime` (or the PR's branch).
+The ARM64 pipeline now uses one **macOS M2** Codemagic workflow. This avoids the
+paid Linux builders entirely, so an individual Codemagic account can use its
+monthly free M2 minutes.
 
-1. Start **ARM64 Codex guest (Linux)** on `linux_x2`. It checks out the exact
-   pinned Codex revision, builds the unmodified `codex-app-server` for
-   `aarch64-unknown-linux-musl`, and packages the Alpine 3.24 aarch64 rootfs.
-   Record the SHA-256 printed at the end and download/copy the direct artifact
-   URL for `codexpad-runtime-arm64.tar.gz` from the finished build. The `.sha256`
-   artifact contains the same value.
-2. Start **CodexPad ARM64 iPad (unsigned IPA)** on `mac_mini_m2`, entering the
-   rootfs artifact's HTTPS `runtime_url` and `runtime_sha256`. A private artifact
-   needs a usable download link (for example a Codemagic signed artifact URL)
-   that the second build can access. The workflow checks the archive and
-   app-server ELF, initializes the pinned ARM64 fork and its submodules, stages
-   the native UI into the fork's `iSH-ARM64` target, compiles with
-   `CODE_SIGNING_ALLOWED=NO`, and verifies the archived guest bytes inside the
-   unsigned IPA. Download `CodexPad-ARM64-unsigned.ipa` and sign/install it
-   with your own normal unsigned-IPA workflow.
+`arm64-ipad-unsigned` performs the whole build on `mac_mini_m2`:
 
-The ARM64 bundle identifier is `com.joshuasyson.CodexPad.arm64`; this protects
-the installed i686 app and its guest data. No JIT/MAP_JIT entitlement is added
-by the staging script. Check entitlements after signing on the device. The
-staging script rejects a changed fork revision or Swift file set; update and
-review its anchors when either source evolves. The two workflows preserve
-Cargo registry, Rust toolchains, Zig and Homebrew caches without uploading
-the large compiled Codex target directory.
+1. installs/uses the pinned Rust, Zig and `cargo-zigbuild` toolchain;
+2. checks out the exact pinned upstream Codex revision and cross-compiles
+   `codex-app-server` for `aarch64-unknown-linux-musl`;
+3. downloads the pinned Alpine 3.24 aarch64 minirootfs;
+4. resolves the required Alpine `main`/`community` dependencies without
+   executing Linux binaries on macOS and bundles their signed `.apk` files;
+5. creates `codexpad-runtime-arm64.tar.gz` with the static app-server;
+6. initializes the pinned `ios-linuxkit` submodule and stages the existing
+   CodexPad SwiftUI host into its `iSH-ARM64` Xcode target;
+7. builds without Apple code signing and emits
+   `CodexPad-ARM64-unsigned.ipa`.
 
-## Local equivalent and evidence
+There is no Docker daemon, Linux Codemagic worker, QEMU package installer, or
+cross-workflow artifact URL/sha handoff. The ARM64 guest installs the bundled
+Alpine packages exactly once during its first sysinit, verifies their SHA-256
+manifest first, and then continues with OpenRC. Alpine's own guest `apk`
+verifies package signatures.
 
-On Linux, build the guest with `scripts/build-codex-arm64.sh`, then run
-`scripts/package-runtime-arm64.sh` with `CODEX_BINARY` and `CODEX_SOURCE_DIR`
-set. On macOS with Xcode and Meson/Ninja installed:
+## Temporary validation trigger
+
+While PR `fix/arm64-m2-codemagic` is under validation, the workflow watches
+pushes to that branch. If the Codemagic app webhook is connected, pushing the
+branch starts the build automatically. Remove or retarget that branch pattern
+when the fix is merged so ordinary feature pushes do not consume build minutes.
+If the webhook is not configured, choose the branch and
+**CodexPad ARM64 iPad (M2, unsigned)** manually in Codemagic.
+
+The resulting artifacts are:
+
+- `artifacts/CodexPad-ARM64-unsigned.ipa`
+- `artifacts/codexpad-runtime-arm64.tar.gz`
+- `artifacts/codexpad-runtime-arm64.tar.gz.sha256`
+
+The ARM64 bundle identifier remains `com.joshuasyson.CodexPad.arm64`, keeping
+the saved ARM64 fakefs separate from the working i686 install. No JIT/MAP_JIT
+entitlement is added by this build.
+
+## Local equivalent
+
+On an Apple-silicon Mac, install Meson/Ninja and the pinned Rust/Zig tooling,
+then build the guest and app in the same order used by `codemagic.yaml`:
 
 ```sh
+export CODEX_SOURCE_DIR="$PWD/.codex-local/codex-upstream"
+export CARGO_TARGET_DIR="$PWD/.codex-local/cargo-target"
+export CODEX_BINARY="$CARGO_TARGET_DIR/aarch64-unknown-linux-musl/release/codex-app-server"
+export OUTPUT_ROOTFS="$PWD/artifacts/codexpad-runtime-arm64.tar.gz"
+
+bash scripts/build-codex-arm64.sh
+bash scripts/package-runtime-arm64.sh
+
 git submodule update --init --recursive upstream/ios-linuxkit
 python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
-export CODEXPAD_ROOTFS_PATH="$PWD/artifacts/codexpad-runtime-arm64.tar.gz"
+export CODEXPAD_ROOTFS_PATH="$OUTPUT_ROOTFS"
 xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj \
   -scheme iSH-ARM64 -configuration Release -sdk iphoneos \
   -destination 'generic/platform=iOS' \
@@ -46,23 +68,21 @@ xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj \
   CODE_SIGN_ENTITLEMENTS= build
 ```
 
-An unsigned compile and ELF header checks do not establish that the Linux
-guest boots, that Rust can spawn children, or that TLS and MCP work. Record
-each device result, iOS version, fork revision, Codex revision, run duration
-and failure logs in `ARM64_RUNTIME.md` before considering this PR ready.
+An unsigned compile and ELF checks establish build compatibility only. After
+signing/installing the IPA on a physical iPad, close the runtime gates below
+before replacing the i686 build.
 
-| Gate | How to check on a signed physical iPad |
+| Gate | Physical-iPad validation |
 | --- | --- |
-| Guest boot and toolchain | Terminal: `uname -m` (`aarch64`), `/bin/sh`, `git --version`, `python3 --version`, `rg --version`, `ssh -V` |
-| DNS and HTTPS | `python3 -c 'import socket; print(socket.getaddrinfo("example.com",443))'` and `python3 -c 'import urllib.request; print(urllib.request.urlopen("https://example.com").status)'` |
-| Subprocess, files, signals | Run the commands in `scripts/probe-arm64-runtime.sh` inside the ARM64 guest; repeat after suspend/resume |
-| Host bridge and app-server | Native SwiftUI should connect to `ws://127.0.0.1:4500`, initialize, load account/model, list/read files and create a thread |
-| Real Codex protocol | On an AArch64 Linux host, use the pinned fork, packaged rootfs and `scripts/probe-ish-runtime.py --transport websocket --startup init` to exercise initialize, account/read, model/list, fs/readDirectory, shell tool and 20 repeated child launches; repeat on iPad through the native UI |
-| Approvals and turns | With an authenticated account, create threads, run turns and shell tools, request/resolve approvals, interrupt a turn, and restart the app |
-| Generic MCP | Register a test MCP server; exercise HTTP/SSE or Streamable HTTP, a tool call, browser OAuth handoff and callback, then test ChatCut's Codex MCP integration without bundling it |
-| Performance | On the same iPad compare cold boot, `command/exec`, app-server initialize, `git status`, `rg` against the i686 build; report median and range |
+| Guest identity | `uname -m` must report `aarch64` |
+| First boot | bundled package SHA checks and `apk add --no-network` complete once |
+| Guest tools | `/bin/sh`, Git, Python, ripgrep and SSH client run |
+| DNS/HTTPS | guest name resolution and TLS request succeed |
+| App bridge | SwiftUI connects to `ws://127.0.0.1:4500` and initializes the app-server |
+| Codex protocol | account/model/files/thread/turn RPCs and repeated subprocess launches work |
+| Files bridge | bookmarked iPad folder mounts and survives relaunch |
+| Approvals | shell/tool approvals, interrupts and restart work |
+| Generic MCP | HTTP/SSE or Streamable HTTP, OAuth callback and a test tool call work |
+| ChatCut | validate only after generic MCP/OAuth works; do not hardcode ChatCut into the runtime |
 
-The Codemagic builds and device gates were **not run** in this development
-environment; no Xcode, Docker daemon, AArch64 host or connected iPad is
-available here. A Codemagic compile or device failure is a blocker to promoting
-this draft PR. Keep the i686 variant available while closing these gates.
+Keep the i686 build available until these device gates pass.
