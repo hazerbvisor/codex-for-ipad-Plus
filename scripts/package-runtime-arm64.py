@@ -145,7 +145,7 @@ def main() -> None:
             checksum_path.write_text(f"{sha256(binary)}  /usr/local/libexec/codexpad/codex-app-server\n")
 
         runtime = {
-            "schemaVersion": 2,
+            "schemaVersion": 1,
             "ishRevision": config["revision"],
             "alpineRelease": release,
             "target": target,
