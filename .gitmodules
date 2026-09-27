@@ -9,3 +9,6 @@
 	url = https://github.com/ish-app/linux
 	update = none
 	shallow = true
+[submodule "ios-linuxkit"]
+	path = upstream/ios-linuxkit
+	url = https://github.com/rcarmo/ios-linuxkit.git
