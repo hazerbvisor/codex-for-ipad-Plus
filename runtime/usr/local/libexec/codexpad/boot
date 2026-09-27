@@ -1,6 +1,7 @@
 #!/bin/sh
-# iSH supplies devices and networking. Initialize OpenRC's per-boot state
-# without Linux hardware setup or tmpfs (not implemented by this kernel).
+# iSH supplies devices and networking. Bootstrap the pinned AArch64 package
+# bundle once, then initialize OpenRC's per-boot state without Linux hardware
+# setup or tmpfs (not implemented by this kernel).
 set -eu
 if [ "$PPID" != 1 ]; then
     echo "CodexPad boot initialization must be launched by init" >&2
@@ -10,10 +11,28 @@ if [ -L /run ] || [ -L /run/openrc ]; then
     echo "Refusing symlinked OpenRC runtime state" >&2
     exit 1
 fi
-mkdir -p /proc /run/openrc /run/lock
+mkdir -p /proc /run /run/lock /var/lib/codexpad
 if [ ! -r /proc/self/stat ]; then
     mount -t proc proc /proc
 fi
+
+bundle=/usr/local/share/codexpad/apks
+marker=/var/lib/codexpad/arm64-packages-installed
+if [ -d "$bundle" ] && [ ! -f "$marker" ]; then
+    set -- "$bundle"/*.apk
+    if [ -e "$1" ]; then
+        echo "Installing bundled CodexPad guest packages..."
+        (cd "$bundle" && sha256sum -c SHA256SUMS)
+        /sbin/apk add --no-network "$@"
+        command -v openrc >/dev/null
+        command -v git >/dev/null
+        command -v python3 >/dev/null
+        command -v rg >/dev/null
+        touch "$marker"
+    fi
+fi
+
+mkdir -p /run/openrc
 # Only transient service state is discarded on a new guest boot. Never touch
 # /root/.codex, linked projects, service definitions, or other /run contents.
 find /run/openrc -mindepth 1 -delete
