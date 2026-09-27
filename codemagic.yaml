@@ -36,7 +36,7 @@ workflows:
           export HOMEBREW_NO_AUTO_UPDATE=1
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
           missing=()
-          for formula in meson ninja pkg-config openssl@3 zlib zstd jq xz coreutils gnu-sed gnu-tar; do
+          for formula in meson ninja pkgconf openssl@3 zlib zstd jq xz coreutils gnu-sed gnu-tar; do
             brew list "$formula" >/dev/null 2>&1 || missing+=("$formula")
           done
           if (( ${#missing[@]} )); then
