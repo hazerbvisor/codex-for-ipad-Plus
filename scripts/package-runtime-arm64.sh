@@ -31,11 +31,14 @@ tar -tzf "$base" >/dev/null
 tar -xzf "$base" -C "$root"
 python3 "$project_root/scripts/check-arm64-elf.py" "$root/bin/busybox"
 
-command -v docker >/dev/null || { echo 'Docker with linux/arm64 support is required to install packages' >&2; exit 1; }
-docker run --rm --platform linux/arm64 \
+command -v docker >/dev/null || { echo 'Docker is required to install Alpine packages' >&2; exit 1; }
+# apk can extract packages for another architecture without running guest
+# binaries. Avoid QEMU/binfmt and package install scripts in CI: the service
+# and certificate bundle are installed explicitly below.
+docker run --rm \
     --env "HOST_UID=$(id -u)" --env "HOST_GID=$(id -g)" \
     --volume "$root:/target" "alpine:$release" \
-    sh -euc 'apk --root /target --arch aarch64 --no-cache add bash ca-certificates coreutils curl findutils git jq less openrc openssh-client patch python3 ripgrep; chown -R "$HOST_UID:$HOST_GID" /target'
+    sh -euc 'printf "%s\n" "https://dl-cdn.alpinelinux.org/alpine/v3.24/main" "https://dl-cdn.alpinelinux.org/alpine/v3.24/community" > /target/etc/apk/repositories; apk --root /target --arch aarch64 --no-scripts --no-cache add bash ca-certificates-bundle coreutils curl findutils git jq less openrc openssh-client patch python3 ripgrep; chown -R "$HOST_UID:$HOST_GID" /target'
 for executable in bin/busybox sbin/openrc usr/bin/git usr/bin/python3 usr/bin/rg; do
     test -x "$root/$executable" || { echo "Missing guest executable: $executable" >&2; exit 1; }
     python3 "$project_root/scripts/check-arm64-elf.py" "$root/$executable"
