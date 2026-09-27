@@ -3,7 +3,7 @@
 workflows:
   arm64-guest:
     name: ARM64 Codex guest (Linux)
-    instance_type: linux_x2
+    instance_type: linux
     max_build_duration: 120
     cache:
       cache_paths:

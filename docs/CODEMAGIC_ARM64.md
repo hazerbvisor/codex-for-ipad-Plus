@@ -4,7 +4,7 @@ This branch supplies two **manual** workflows in `codemagic.yaml`. They do
 not trigger GitHub Actions or publish to an app store. Add this GitHub
 repository to Codemagic and select `feature/arm64-runtime` (or the PR's branch).
 
-1. Start **ARM64 Codex guest (Linux)** on `linux_x2`. It checks out the exact
+1. Start **ARM64 Codex guest (Linux)** on Codemagic's `linux` instance. It checks out the exact
    pinned Codex revision, builds the unmodified `codex-app-server` for
    `aarch64-unknown-linux-musl`, and packages the Alpine 3.24 aarch64 rootfs.
    Record the SHA-256 printed at the end and download/copy the direct artifact
