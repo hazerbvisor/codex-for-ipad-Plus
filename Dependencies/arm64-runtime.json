@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "repository": "rcarmo/ios-linuxkit",
+  "revision": "61719f8177499f789fc2f7f421ea919ac7780608",
+  "alpineRelease": "3.24",
+  "rootfsUrl": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.0-aarch64.tar.gz",
+  "rootfsSha256": "4b8cd66a6688b2a87276c39843ed89c3a06d9534fc6a5823c586aff2696c1f2a",
+  "codexTarget": "aarch64-unknown-linux-musl"
+}

@@ -1,0 +1,110 @@
+# Manual workflows: Linux creates the pinned ARM64 guest; macOS embeds it in
+# the separate ARM64 iSH target. No Apple account or signing key is required.
+workflows:
+  arm64-guest:
+    name: ARM64 Codex guest (Linux)
+    instance_type: linux_x2
+    max_build_duration: 120
+    cache:
+      cache_paths:
+        - ~/.cargo/registry
+        - ~/.cargo/git
+        - ~/.cargo/bin
+        - ~/.rustup/toolchains
+        - ~/.codexpad-zig
+    scripts:
+      - name: Build pinned static app-server and ARM64 Alpine image
+        script: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$HOME/.codexpad-zig:$PATH"
+          mkdir -p "$HOME/.codexpad-zig" "$CM_BUILD_DIR/artifacts" "$CM_BUILD_DIR/.codex-local"
+          codex_rev="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["codex"]["revision"])')"
+          rust_version="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["codex"]["rustToolchain"])')"
+          zig_version="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["tooling"]["zig"])')"
+          zigbuild_version="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["tooling"]["cargoZigbuild"])')"
+          if [ ! -x "$HOME/.codexpad-zig/zig" ] || [ "$("$HOME/.codexpad-zig/zig" version)" != "$zig_version" ]; then
+            curl --fail --location --retry 3 "https://ziglang.org/download/$zig_version/zig-x86_64-linux-$zig_version.tar.xz" -o artifacts/zig.tar.xz
+            tar -xJf artifacts/zig.tar.xz --strip-components 1 -C "$HOME/.codexpad-zig"
+            rm artifacts/zig.tar.xz
+          fi
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 --fail --location https://sh.rustup.rs | sh -s -- -y --profile minimal
+          fi
+          rustup toolchain install "$rust_version" --profile minimal --component rust-src --target aarch64-unknown-linux-musl
+          rustup default "$rust_version"
+          if ! cargo zigbuild --version 2>/dev/null | grep -Fq "$zigbuild_version"; then
+            cargo install cargo-zigbuild --version "$zigbuild_version" --locked
+          fi
+          export CODEX_SOURCE_DIR="$CM_BUILD_DIR/.codex-local/codex-upstream"
+          if [ ! -d "$CODEX_SOURCE_DIR/.git" ]; then
+            mkdir -p "$CODEX_SOURCE_DIR"
+            git -C "$CODEX_SOURCE_DIR" init
+            git -C "$CODEX_SOURCE_DIR" remote add origin https://github.com/openai/codex.git
+          fi
+          git -C "$CODEX_SOURCE_DIR" fetch --depth 1 origin "$codex_rev"
+          git -C "$CODEX_SOURCE_DIR" checkout --detach FETCH_HEAD
+          export CARGO_TARGET_DIR="$CM_BUILD_DIR/.codex-local/cargo-target"
+          bash scripts/build-codex-arm64.sh
+          export CODEX_BINARY="$CARGO_TARGET_DIR/aarch64-unknown-linux-musl/release/codex-app-server"
+          export OUTPUT_ROOTFS="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
+          bash scripts/package-runtime-arm64.sh
+          tar -tzf "$OUTPUT_ROOTFS" | grep -F './usr/local/libexec/codexpad/codex-app-server'
+          cat "$OUTPUT_ROOTFS.sha256"
+    artifacts:
+      - artifacts/codexpad-runtime-arm64.tar.gz
+      - artifacts/codexpad-runtime-arm64.tar.gz.sha256
+
+  arm64-ipad-unsigned:
+    name: CodexPad ARM64 iPad (unsigned IPA)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    inputs:
+      runtime_url:
+        description: Direct download URL for arm64-guest's codexpad-runtime-arm64.tar.gz artifact
+        type: string
+      runtime_sha256:
+        description: SHA-256 printed by arm64-guest for the tar.gz artifact
+        type: string
+    environment:
+      xcode: latest
+      vars:
+        ARM64_RUNTIME_URL: ${{ inputs.runtime_url }}
+        ARM64_RUNTIME_SHA256: ${{ inputs.runtime_sha256 }}
+    cache:
+      cache_paths:
+        - ~/Library/Caches/Homebrew
+    scripts:
+      - name: Check guest archive and stage the ARM64 iPad target
+        script: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          mkdir -p artifacts
+          [[ "$ARM64_RUNTIME_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]
+          [[ "$ARM64_RUNTIME_URL" == https://* ]]
+          curl --fail --location --retry 3 --output artifacts/codexpad-runtime-arm64.tar.gz "$ARM64_RUNTIME_URL"
+          actual="$(shasum -a 256 artifacts/codexpad-runtime-arm64.tar.gz | cut -d ' ' -f1)"
+          expected="$(printf '%s' "$ARM64_RUNTIME_SHA256" | tr 'A-F' 'a-f')"
+          [[ "$actual" == "$expected" ]]
+          tar -xOf artifacts/codexpad-runtime-arm64.tar.gz ./usr/local/share/codexpad/runtime.json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["hasAppServer"] and d["target"]=="aarch64-unknown-linux-musl"'
+          tar -xOf artifacts/codexpad-runtime-arm64.tar.gz ./usr/local/libexec/codexpad/codex-app-server > artifacts/codex-app-server-arm64
+          python3 scripts/check-arm64-elf.py --static artifacts/codex-app-server-arm64
+          git submodule update --init --recursive upstream/ios-linuxkit
+          brew list meson >/dev/null 2>&1 || brew install meson
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
+      - name: Compile ARM64 iSH guest and native SwiftUI host without signing
+        script: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          export CODEXPAD_ROOTFS_PATH="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
+          xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj -scheme iSH-ARM64 -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$CM_BUILD_DIR/artifacts/derived-arm64" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_ENTITLEMENTS= build
+          app="$CM_BUILD_DIR/artifacts/derived-arm64/Build/Products/Release-iphoneos/CodexPad.app"
+          test -s "$app/root.tar.gz"
+          test -x "$app/CodexPad"
+          [[ "$(shasum -a 256 "$app/root.tar.gz" | cut -d ' ' -f1)" == "$(shasum -a 256 "$CODEXPAD_ROOTFS_PATH" | cut -d ' ' -f1)" ]]
+          mkdir -p artifacts/ipa/Payload
+          cp -R "$app" artifacts/ipa/Payload/CodexPad.app
+          (cd artifacts/ipa && zip -qry ../CodexPad-ARM64-unsigned.ipa Payload)
+          unzip -l artifacts/CodexPad-ARM64-unsigned.ipa | grep -F 'Payload/CodexPad.app/root.tar.gz'
+    artifacts:
+      - artifacts/CodexPad-ARM64-unsigned.ipa
