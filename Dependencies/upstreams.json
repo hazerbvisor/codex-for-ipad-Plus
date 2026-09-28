@@ -1,19 +1,11 @@
 {
   "schemaVersion": 1,
-  "ish": {
-    "repository": "ish-app/ish",
-    "revision": "997642f3787cc63e65f7134b7bb0362c74bff8e0"
-  },
   "codex": {
     "repository": "openai/codex",
     "revision": "d77ebc72237a639b6d877f2edc3b20b54631f25e",
     "rustToolchain": "1.95.0",
-    "target": "i686-unknown-linux-musl",
+    "target": "aarch64-unknown-linux-musl",
     "protocol": "v2"
-  },
-  "alpine": {
-    "release": "3.19",
-    "rootfsUrl": "https://github.com/ish-app/roots/releases/download/g00712ff0a54b2839c5aa1a8ed758003ca65357dc/appstore-apk.tar.gz"
   },
   "tooling": {
     "zig": "0.14.1",
