@@ -1,55 +1,61 @@
 # CodexPad architecture
 
-CodexPad is designed to run the open-source Codex agent and its Linux tool environment locally on iPadOS. Real-runtime verification is incomplete; see [the verification record](VERIFICATION.md). Provider-backed model inference remains a network operation. The app combines three layers in one process:
-
-1. **Native workspace** — an adaptive SwiftUI interface for threads, conversation items, plans, approvals, diffs, files, dynamic models, settings, the complete protocol Feature Center, and a recoverable terminal.
-2. **Codex app-server** — the upstream Rust `codex-app-server`, cross-compiled as a static 32-bit x86 musl executable. The native client uses the upstream v2 JSON-RPC protocol over an app-local WebSocket.
-3. **iSH runtime** — iSH's user-mode x86 emulator, syscall translation, fakefs filesystem, networking, PTYs, and Files integration. It boots a pinned Alpine x86 root containing Codex and essential development tools.
+CodexPad now uses one ARM64 guest path only.
 
 ```text
 SwiftUI workspace
       |
-      | JSON-RPC v2 / ws://127.0.0.1
+      | JSON-RPC v2 / ws://127.0.0.1:4500
       v
-Codex app-server (i686-musl)
+Codex app-server (aarch64-unknown-linux-musl)
       |
       | Linux syscalls
       v
-iSH kernel + x86 emulator -> fakefs -> Files app
+ARM64 ios-linuxkit guest -> Alpine aarch64 -> app filesystem / Files bridge
 ```
 
-## Why this boundary
+## Layers
 
-iPadOS does not provide unrestricted process execution or a desktop sandbox API. Porting only the Codex UI would therefore produce a remote client, while compiling Codex directly for arm64-iOS would remove the shell and tool environment that makes it an agent. iSH keeps the complete Linux execution model on-device. The tradeoffs are x86 emulation cost and iPadOS background suspension.
+1. **Native workspace** — SwiftUI views, models, approvals, settings, Files/workspace integration and the Codex protocol client in `app/CodexPad`.
+2. **Codex app-server** — upstream Rust `codex-app-server`, cross-compiled for `aarch64-unknown-linux-musl`.
+3. **ARM64 guest** — pinned `rcarmo/ios-linuxkit` runtime with an Alpine aarch64 rootfs and the Codex guest overlay.
 
-## Pinned sources
+The former root iSH x86 emulator, i686 target, compatibility patch layer and x86 instruction tests are intentionally not part of the active architecture anymore.
 
-- iSH: `997642f3787cc63e65f7134b7bb0362c74bff8e0`
-- Codex candidate: `d77ebc72237a639b6d877f2edc3b20b54631f25e`
-- Rust: `1.95.0`
-- Guest Rust adapter: `patches/rust-1.95-ish-spawn.patch`, locked to compiler commit `59807616e1fa2540724bfbac14d7976d7e4a3860`; see [compatibility notes](../compat/README.md).
-- Guest target: `i686-unknown-linux-musl`
+## Staging model
 
-`Dependencies/upstreams.json` is the single source of truth for these pins. A scheduled workflow discovers new Codex commits, reads their required Rust toolchain, verifies the native client's method and payload contract against that commit's generated JSON Schema, runs the complete i686-musl compatibility build, and opens an update pull request only after those gates pass. Runtime code never assumes a particular Codex version string; protocol capability negotiation and tolerant decoding handle additive v2 changes.
+`scripts/prepare-arm64-ios.py` copies the pinned ARM64 upstream into a disposable build directory and injects only the CodexPad-specific host layer:
+
+- all Swift files from `app/CodexPad` plus the protocol schema;
+- `app/SceneDelegate.m`;
+- `app/AppGroup.m`;
+- `app/Info.plist`;
+- the bundle identifier from `app/iSH.xcconfig`.
+
+The ARM64 upstream supplies the kernel/runtime implementation, terminal, Files support, lifecycle code and Xcode project. This keeps CodexPad-specific changes small and avoids maintaining a second legacy emulator tree.
+
+## Runtime pins
+
+`Dependencies/arm64-runtime.json` is the source of truth for the ARM64 runtime revision, Alpine release/rootfs checksum and guest target. `Dependencies/upstreams.json` pins the Codex source/toolchain.
+
+Current guest target: `aarch64-unknown-linux-musl`.
 
 ## Runtime contract
 
-- Bind app-server only to guest loopback.
-- Complete `initialize` / `initialized` before other requests.
-- Delegate credential persistence and refresh to the upstream app-server inside the private iSH root.
-- Keep repositories and Codex state inside the selected iSH root.
-- Start threads with `danger-full-access` inside the guest, because iSH cannot implement Codex's desktop Linux seccomp/namespace sandbox. Treat the iPad application container as the outer OS boundary and keep approvals `on-request`.
-- Route command, file-change, permission, and user-input requests to native approval surfaces.
-- Route every compatible client method through either a purpose-built control or the categorized Advanced request surface; exact-set CI fails on unclassified upstream additions.
-- Use iSH's `ios` filesystem mount for Files-selected folders so its existing security-scoped bookmark lifecycle remains the single persistence mechanism.
-- Keep the terminal available as a recovery tool; it is not the primary UI.
+- Bind the app-server to guest/app loopback only.
+- Complete Codex `initialize` / `initialized` before normal RPC use.
+- Keep guest state and tool execution inside the selected ARM64 Linux root.
+- Route approvals and user-input requests through native UI surfaces.
+- Keep the terminal available as a recovery/diagnostic surface.
+- Treat the iPad application container as the outer OS boundary; the Linux compatibility guest is not a separate desktop-style security sandbox.
 
-## Honest platform limits
+## Build boundary
 
-- Active turns can be suspended when iPadOS suspends the app.
-- Performance depends on x86 emulation and project size.
-- External toolchains still need Alpine-compatible x86 packages.
-- iSH is not a security boundary. Approved Codex tools can access the complete selected guest root; only expose workspaces and credentials appropriate for that app container.
-- Upstream moved experimental Code Mode into separate host/runtime crates. The app-server no longer needs the old in-process V8 stubs. This port does not package a compatible Code Mode host and does not claim that feature works.
-- Provider-backed model inference still requires network access; this architecture does not claim offline LLM inference.
-- Distribution must satisfy iSH's GPL terms and the additional iOS permission in `LICENSE.IOS`; Codex notices remain included under Apache-2.0.
+Hosted builds use the M2 workflow in `codemagic.yaml`. The workflow prepares the AArch64 runtime, stages the ARM64 Xcode project and produces an unsigned iPad artifact. The legacy i686/x86 GitHub workflows are not part of the supported build path.
+
+## Limits
+
+- iPadOS background suspension still applies.
+- Provider-backed model inference normally requires network access.
+- Physical-device runtime behavior must be verified separately from simulator/source-level checks.
+- Upstream features requiring unsupported external host executables are not implied to work merely because the app-server runs.
