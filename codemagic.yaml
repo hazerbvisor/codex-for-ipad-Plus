@@ -52,6 +52,11 @@ workflows:
           command -v tar
           meson --version
           ninja --version
+          python3 -m py_compile \
+            scripts/check-arm64-elf.py \
+            scripts/prepare-arm64-ios.py \
+            scripts/probe-arm64-websocket.py \
+            scripts/validate-codex-protocol.py
 
       - name: Build static AArch64 Codex and Alpine guest
         script: |
@@ -86,6 +91,11 @@ workflows:
           fi
           git -C "$CODEX_SOURCE_DIR" fetch --depth 1 origin "$codex_rev"
           git -C "$CODEX_SOURCE_DIR" checkout --detach FETCH_HEAD
+          # This is intentionally before the expensive Rust compile. Catch a
+          # stale bundled schema/catalog or experimental-method drift without
+          # burning the rest of an M2 build.
+          python3 scripts/validate-codex-protocol.py \
+            "$CODEX_SOURCE_DIR/codex-rs/app-server-protocol/schema/json"
           export CARGO_TARGET_DIR="$HOME/.codexpad-cargo-target"
           export CARGO_BUILD_JOBS=3
           bash scripts/build-codex-arm64.sh
