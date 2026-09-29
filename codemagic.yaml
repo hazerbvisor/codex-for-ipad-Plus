@@ -1,5 +1,5 @@
 # Free-plan compatible ARM64 pipeline: one Apple-silicon M2 worker builds the
-# Linux app-server/rootfs and then the unsigned iPad app. No paid Linux worker,
+# Linux app-server download/rootfs and then the unsigned iPad app. No paid Linux worker,
 # Apple account, signing key, Docker VM, or hand-carried artifact URL is needed.
 workflows:
   arm64-ipad-all-in-one:
@@ -21,6 +21,9 @@ workflows:
         - pattern: "fix/aarch64-musl-jemalloc-link"
           include: true
           source: true
+        - pattern: "fix/official-arm64-app-server"
+          include: true
+          source: true
         - pattern: "main"
           include: true
           source: true
@@ -32,6 +35,7 @@ workflows:
         - ~/.cargo/bin
         - ~/.rustup/toolchains
         - ~/.codexpad-zig
+        - ~/.codexpad-codex-releases
         - ~/.codexpad-apk-tools
         - ~/.codexpad-cargo-target
         - ~/Library/Caches/Homebrew
@@ -57,35 +61,20 @@ workflows:
           ninja --version
           python3 -m py_compile \
             scripts/check-arm64-elf.py \
+            scripts/download-codex-arm64.py \
             scripts/prepare-arm64-ios.py \
             scripts/probe-arm64-websocket.py \
             scripts/validate-codex-protocol.py
 
-      - name: Build static AArch64 Codex and Alpine guest
+          python3 tests/codexpad/test_release_download.py
+
+      - name: Download verified AArch64 Codex and build Alpine guest
         script: |
           set -euo pipefail
           export HOMEBREW_NO_AUTO_UPDATE=1
-          export PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$(brew --prefix gnu-tar)/libexec/gnubin:$HOME/.cargo/bin:$HOME/.codexpad-zig:/opt/homebrew/bin:/usr/local/bin:$PATH"
-          mkdir -p "$HOME/.codexpad-zig" "$CM_BUILD_DIR/artifacts" "$CM_BUILD_DIR/.codex-local"
+          export PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$(brew --prefix gnu-tar)/libexec/gnubin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+          mkdir -p "$CM_BUILD_DIR/artifacts" "$CM_BUILD_DIR/.codex-local"
           codex_rev="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["codex"]["revision"])')"
-          rust_version="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["codex"]["rustToolchain"])')"
-          zig_version="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["tooling"]["zig"])')"
-          zigbuild_version="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["tooling"]["cargoZigbuild"])')"
-          if [ ! -x "$HOME/.codexpad-zig/zig" ] || [ "$("$HOME/.codexpad-zig/zig" version)" != "$zig_version" ]; then
-            rm -rf "$HOME/.codexpad-zig"/*
-            curl --fail --location --retry 3 "https://ziglang.org/download/$zig_version/zig-aarch64-macos-$zig_version.tar.xz" -o artifacts/zig.tar.xz
-            tar -xJf artifacts/zig.tar.xz --strip-components 1 -C "$HOME/.codexpad-zig"
-            rm artifacts/zig.tar.xz
-          fi
-          if ! command -v rustup >/dev/null; then
-            curl --proto '=https' --tlsv1.2 --fail --location https://sh.rustup.rs | sh -s -- -y --profile minimal
-            export PATH="$HOME/.cargo/bin:$PATH"
-          fi
-          rustup toolchain install "$rust_version" --profile minimal --component rust-src --target aarch64-unknown-linux-musl
-          rustup default "$rust_version"
-          if ! cargo zigbuild --version 2>/dev/null | grep -Fq "$zigbuild_version"; then
-            cargo install cargo-zigbuild --version "$zigbuild_version" --locked
-          fi
           export CODEX_SOURCE_DIR="$CM_BUILD_DIR/.codex-local/codex-upstream"
           if [ ! -d "$CODEX_SOURCE_DIR/.git" ]; then
             mkdir -p "$CODEX_SOURCE_DIR"
@@ -96,15 +85,15 @@ workflows:
           git -C "$CODEX_SOURCE_DIR" reset --hard FETCH_HEAD
           git -C "$CODEX_SOURCE_DIR" clean -fdx
           git -C "$CODEX_SOURCE_DIR" checkout --force --detach FETCH_HEAD
-          # This is intentionally before the expensive Rust compile. Catch a
-          # stale bundled schema/catalog or experimental-method drift without
-          # burning the rest of an M2 build.
+          release_tag="$(python3 -c 'import json; print(json.load(open("Dependencies/upstreams.json"))["codex"]["release"]["tag"])')"
+          git -C "$CODEX_SOURCE_DIR" fetch --depth 1 origin "refs/tags/$release_tag:refs/tags/$release_tag"
+          test "$(git -C "$CODEX_SOURCE_DIR" rev-parse "$release_tag^{commit}")" = "$codex_rev"
+          # Validate the release source against the complete native GUI contract.
           python3 scripts/validate-codex-protocol.py \
             "$CODEX_SOURCE_DIR/codex-rs/app-server-protocol/schema/json"
-          export CARGO_TARGET_DIR="$HOME/.codexpad-cargo-target"
-          export CARGO_BUILD_JOBS=3
-          bash scripts/build-codex-arm64.sh
-          export CODEX_BINARY="$CARGO_TARGET_DIR/aarch64-unknown-linux-musl/release/codex-app-server"
+          export CODEX_BINARY="$CM_BUILD_DIR/artifacts/codex-app-server"
+          python3 scripts/download-codex-arm64.py --output "$CODEX_BINARY" \
+            --cache-dir "$HOME/.codexpad-codex-releases"
           export APK_TOOLS_CACHE_DIR="$HOME/.codexpad-apk-tools"
           bash scripts/build-apk-tools-macos.sh
           export APK_HOST_BINARY="$APK_TOOLS_CACHE_DIR/bin/apk"
@@ -145,6 +134,7 @@ workflows:
           unzip -l artifacts/CodexPad-ARM64-unsigned.ipa | grep -F 'Payload/CodexPad.app/root.tar.gz'
 
     artifacts:
+      - artifacts/codex-app-server.provenance.json
       - artifacts/CodexPad-ARM64-unsigned.ipa
       - artifacts/codexpad-runtime-arm64.tar.gz
       - artifacts/codexpad-runtime-arm64.tar.gz.sha256

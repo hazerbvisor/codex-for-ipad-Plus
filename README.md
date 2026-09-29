@@ -24,20 +24,21 @@ The legacy i686/x86 iSH emulator, x86-specific runtime patches, i686 Codex workf
 - `upstream/ios-linuxkit` — pinned ARM64 Linux/iOS runtime.
 - `runtime/` — Alpine guest overlay and Codex startup service.
 - `scripts/prepare-arm64-ios.py` — creates a disposable ARM64 Xcode staging tree from the pinned upstream plus CodexPad UI.
-- `scripts/build-codex-arm64.sh` — builds the Linux AArch64 Codex app-server.
+- `scripts/download-codex-arm64.py` — verifies and stages the official Linux AArch64 musl app-server.
+- `scripts/build-codex-arm64.sh` — optional local source-build fallback.
 - `scripts/package-runtime-arm64.sh` — packages the Alpine AArch64 runtime.
 - `Dependencies/arm64-runtime.json` — pinned ARM64 runtime, Alpine and apk-tools metadata.
 - `codemagic.yaml` — unsigned M2 Codemagic build path.
 
 ## Runtime pins
 
-The ARM64 runtime currently targets Alpine 3.24 and `aarch64-unknown-linux-musl`. The pinned `ios-linuxkit` revision and rootfs checksum live in `Dependencies/arm64-runtime.json`; Codex source/toolchain pins live in `Dependencies/upstreams.json`.
+The ARM64 runtime currently targets Alpine 3.24 and `aarch64-unknown-linux-musl`. The pinned `ios-linuxkit` revision and rootfs checksum live in `Dependencies/arm64-runtime.json`; Codex release/checksum and matching source/toolchain pins live in `Dependencies/upstreams.json`.
 
 ## Building
 
 ### Codemagic
 
-The supported hosted path is the M2 workflow in `codemagic.yaml`. It builds the AArch64 Codex runtime, stages the ARM64 iOS project, compiles the unsigned iPad app and exports the IPA artifact.
+The supported hosted path is the M2 workflow in `codemagic.yaml`. It downloads the checksum-pinned official AArch64 Codex app-server, checks its release source against the native protocol catalog, stages the ARM64 iOS project, compiles the unsigned iPad app and exports the IPA artifact.
 
 ### macOS
 

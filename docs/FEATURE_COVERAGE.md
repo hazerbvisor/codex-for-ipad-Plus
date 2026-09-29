@@ -1,6 +1,6 @@
 # Codex GUI feature coverage
 
-For candidate `d77ebc72237a639b6d877f2edc3b20b54631f25e`, the catalog contains all **166 client request methods**, **11 server-to-client request methods**, and **84 server notifications**. Exact-set coverage verifies that no protocol method is silently omitted; it does not prove runtime support or a purpose-built interface for every operation.
+For official release `rust-v0.155.0-alpha.4` (`66eab8ece44141ff92707868269e1d53b40c4ac5`), the catalog contains all **166 client request methods**, **11 server-to-client request methods**, and **84 server notifications**. Exact-set coverage verifies that no protocol method is silently omitted; it does not prove runtime support or a purpose-built interface for every operation.
 
 ## How every feature is reachable
 

@@ -1,3 +1,27 @@
+# Official ARM64 release-download change (30 September 2026)
+
+Local verification for this change:
+
+- Official `rust-v0.155.0-alpha.4` tag resolves to source commit
+  `66eab8ece44141ff92707868269e1d53b40c4ac5`.
+- Downloaded official ARM64 musl app-server archive matches GitHub's published
+  SHA-256 `a7f84702edac562d5bb4827507f9658cb789e76320eefd3d142eaf7a86115f86`.
+- Extracted executable is a static AArch64 ELF; binary SHA-256:
+  `0d7e590e54ea784c803ec563d5fd46a03e9fa52d4ed3ffe192c320a3e9786f9d`.
+- Release source passes the unchanged native protocol gate: 166 client methods,
+  11 server requests, 84 notifications and 79 required schema tokens.
+- Four offline downloader regressions pass: verified staging/cache reuse,
+  checksum rejection, archive traversal rejection and x86 rejection. Failures
+  preserve the previous output.
+- Codemagic YAML parses; all embedded shell stages and the rootfs packager pass
+  Bash syntax validation. Rust/Zig compilation is absent from the M2 workflow.
+
+A full Codemagic/Xcode build, rootfs boot, and real iPad RPC/MCP execution of
+this official binary have **not** been verified locally. The historical results
+below concern earlier pins/builds and do not establish those gates for this one.
+
+---
+
 # Verification record
 
 September 14, 2026 audit and upstream upgrade. This is a development record, not a release certification.

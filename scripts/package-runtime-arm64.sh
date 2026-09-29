@@ -88,6 +88,23 @@ if [[ -n "${CODEX_BINARY:-}" ]]; then
     test "$(git -C "$CODEX_SOURCE_DIR" rev-parse HEAD)" = "$codex_revision"
     test -f "$CODEX_SOURCE_DIR/LICENSE"
     python3 "$project_root/scripts/check-arm64-elf.py" --static "$CODEX_BINARY"
+    if [[ -f "$CODEX_BINARY.provenance.json" ]]; then
+        python3 - "$codex_config" "$CODEX_BINARY" <<'VERIFY_RELEASE'
+import hashlib, json, pathlib, sys
+config = json.load(open(sys.argv[1]))['codex']
+binary = pathlib.Path(sys.argv[2])
+provenance = json.load(open(str(binary) + '.provenance.json'))
+expected = {'source': 'official-release', 'repository': config['repository'],
+            'revision': config['revision'], 'target': config['target'],
+            'tag': config['release']['tag'], 'archiveSha256': config['release']['sha256']}
+if any(provenance.get(key) != value for key, value in expected.items()):
+    raise SystemExit('Official release provenance differs from the pin')
+if provenance.get('binarySha256') != hashlib.sha256(binary.read_bytes()).hexdigest():
+    raise SystemExit('Official release binary differs from its verified provenance')
+VERIFY_RELEASE
+        install -D -m 0644 "$CODEX_BINARY.provenance.json" \
+            "$root/usr/local/share/codexpad/codex-app-server.provenance.json"
+    fi
     install -D -m 0644 "$CODEX_SOURCE_DIR/LICENSE" \
         "$root/usr/local/share/licenses/codex/LICENSE"
     install -D -m 0755 "$CODEX_BINARY" "$root/usr/local/libexec/codexpad/codex-app-server"
