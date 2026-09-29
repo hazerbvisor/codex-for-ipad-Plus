@@ -92,9 +92,9 @@ workflows:
             git -C "$CODEX_SOURCE_DIR" init
             git -C "$CODEX_SOURCE_DIR" remote add origin https://github.com/openai/codex.git
           fi
-          git -C "$CODEX_SOURCE_DIR" reset --hard
-          git -C "$CODEX_SOURCE_DIR" clean -fdx
           git -C "$CODEX_SOURCE_DIR" fetch --depth 1 origin "$codex_rev"
+          git -C "$CODEX_SOURCE_DIR" reset --hard FETCH_HEAD
+          git -C "$CODEX_SOURCE_DIR" clean -fdx
           git -C "$CODEX_SOURCE_DIR" checkout --force --detach FETCH_HEAD
           # This is intentionally before the expensive Rust compile. Catch a
           # stale bundled schema/catalog or experimental-method drift without
