@@ -18,6 +18,9 @@ workflows:
         - pattern: "fix/arm64-m2-codemagic"
           include: true
           source: true
+        - pattern: "fix/aarch64-musl-jemalloc-link"
+          include: true
+          source: true
         - pattern: "main"
           include: true
           source: true
@@ -90,7 +93,9 @@ workflows:
             git -C "$CODEX_SOURCE_DIR" remote add origin https://github.com/openai/codex.git
           fi
           git -C "$CODEX_SOURCE_DIR" fetch --depth 1 origin "$codex_rev"
-          git -C "$CODEX_SOURCE_DIR" checkout --detach FETCH_HEAD
+          git -C "$CODEX_SOURCE_DIR" reset --hard FETCH_HEAD
+          git -C "$CODEX_SOURCE_DIR" clean -fdx
+          git -C "$CODEX_SOURCE_DIR" checkout --force --detach FETCH_HEAD
           # This is intentionally before the expensive Rust compile. Catch a
           # stale bundled schema/catalog or experimental-method drift without
           # burning the rest of an M2 build.
