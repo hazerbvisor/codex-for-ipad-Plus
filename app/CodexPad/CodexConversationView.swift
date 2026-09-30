@@ -255,6 +255,7 @@ private struct ComposerBar: View {
                     Label(model.selectedModel?.displayName ?? "Model", systemImage: "chevron.down")
                 }
                 .buttonStyle(.plain)
+                    .frame(minHeight: 44)
                 .disabled(model.availableModels.isEmpty)
                 .accessibilityIdentifier("codexpad.model-picker")
 
@@ -276,6 +277,7 @@ private struct ComposerBar: View {
                         Label(model.selectedReasoningEffort?.capitalized ?? "Reasoning", systemImage: "chevron.down")
                     }
                     .buttonStyle(.plain)
+                    .frame(minHeight: 44)
                     .accessibilityIdentifier("codexpad.reasoning-picker")
 
                     if model.showsCompleteFeatureSet, !selected.serviceTiers.isEmpty {
@@ -289,6 +291,7 @@ private struct ComposerBar: View {
                             Label(tierName ?? "Service tier", systemImage: "speedometer")
                         }
                         .buttonStyle(.plain)
+                    .frame(minHeight: 44)
                     }
                 }
 
@@ -302,6 +305,7 @@ private struct ComposerBar: View {
                         Label(model.selectedCollaborationMode ?? "Collaboration", systemImage: "person.2")
                     }
                     .buttonStyle(.plain)
+                    .frame(minHeight: 44)
                     .accessibilityIdentifier("codexpad.collaboration-picker")
                 }
             }

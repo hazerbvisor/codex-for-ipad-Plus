@@ -12,10 +12,9 @@ struct EngineStatusPill: View {
                 .lineLimit(1)
         }
         .font(.caption)
-        .foregroundStyle(CodexPalette.secondaryInk)
+        .foregroundStyle(color)
         .padding(.horizontal, 10)
         .frame(minHeight: 30)
-
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Engine status, \(phase.title)")
     }
@@ -131,20 +130,17 @@ struct TimelineCard: View {
     @ViewBuilder
     private var card: some View {
         VStack(alignment: .leading, spacing: 11) {
-            if item.kind != .user && item.kind != .agent {
-            HStack(alignment: .firstTextBaseline) {
-                Label(item.title, systemImage: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(accent)
-                Spacer(minLength: 12)
-                if item.kind != .user {
+            if item.kind != .user && (item.kind != .agent || item.state == .failed) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label(item.title, systemImage: icon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(item.state == .failed ? CodexPalette.danger : accent)
+                    Spacer(minLength: 12)
                     Label(stateLabel, systemImage: stateIcon)
                         .labelStyle(.titleAndIcon)
                         .font(.caption)
                         .foregroundStyle(CodexPalette.secondaryInk)
                 }
-            }
-
             }
 
             if item.kind == .reasoning {
