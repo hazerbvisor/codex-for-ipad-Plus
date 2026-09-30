@@ -2,10 +2,15 @@
   "schemaVersion": 1,
   "codex": {
     "repository": "openai/codex",
-    "revision": "d77ebc72237a639b6d877f2edc3b20b54631f25e",
+    "revision": "66eab8ece44141ff92707868269e1d53b40c4ac5",
     "rustToolchain": "1.95.0",
     "target": "aarch64-unknown-linux-musl",
-    "protocol": "v2"
+    "protocol": "v2",
+    "release": {
+      "tag": "rust-v0.155.0-alpha.4",
+      "asset": "codex-app-server-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "a7f84702edac562d5bb4827507f9658cb789e76320eefd3d142eaf7a86115f86"
+    }
   },
   "tooling": {
     "zig": "0.14.1",

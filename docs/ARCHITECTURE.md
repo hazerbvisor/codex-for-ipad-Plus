@@ -17,7 +17,7 @@ ARM64 ios-linuxkit guest -> Alpine aarch64 -> app filesystem / Files bridge
 ## Layers
 
 1. **Native workspace** — SwiftUI views, models, approvals, settings, Files/workspace integration and the Codex protocol client in `app/CodexPad`.
-2. **Codex app-server** — upstream Rust `codex-app-server`, cross-compiled for `aarch64-unknown-linux-musl`.
+2. **Codex app-server** — official upstream Rust `codex-app-server` release for `aarch64-unknown-linux-musl`, verified against a pinned archive SHA-256.
 3. **ARM64 guest** — pinned `rcarmo/ios-linuxkit` runtime with an Alpine aarch64 rootfs and the Codex guest overlay.
 
 The former root iSH x86 emulator, i686 target, compatibility patch layer and x86 instruction tests are intentionally not part of the active architecture anymore.

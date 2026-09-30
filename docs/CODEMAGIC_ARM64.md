@@ -7,9 +7,11 @@ it no longer passes a rootfs URL between two builds.
 The workflow performs the complete chain on `mac_mini_m2`:
 
 1. Install/cache Meson, Ninja, GNU host utilities, OpenSSL and zstd.
-2. Download the pinned macOS ARM64 Zig and Rust toolchain.
-3. Cross-build the pinned upstream `codex-app-server` for
-   `aarch64-unknown-linux-musl` with `cargo-zigbuild`.
+2. Fetch the exact source revision and verify that the pinned official release
+   tag resolves to that revision; run the complete native protocol gate.
+3. Download the official `codex-app-server-aarch64-unknown-linux-musl.tar.gz`,
+   verify its pinned SHA-256, extract only its expected regular-file member and
+   require a static AArch64 ELF. Cache archives by checksum and reverify on reuse.
 4. Build the pinned apk-tools 3.0.8 source natively for macOS. The native
    `apk` executable populates the Alpine AArch64 rootfs with
    `--root --arch aarch64 --no-scripts --no-commit-hooks`; no guest Linux
@@ -19,15 +21,39 @@ The workflow performs the complete chain on `mac_mini_m2`:
    SwiftUI host into `iSH-ARM64`, compile without signing, and produce
    `CodexPad-ARM64-unsigned.ipa`.
 
-The workflow is configured to run on pushes to `fix/codemagic-arm64-m2` for
+The workflow is configured to run on pushes to `fix/official-arm64-app-server` for
 validation and on `main` after merge. It also remains selectable manually in
 Codemagic. A normal commit to the validation branch is intentionally used to
 exercise the webhook path before merge. The build artifacts include the
-unsigned IPA, rootfs archive and rootfs SHA-256.
+unsigned IPA, rootfs archive, rootfs SHA-256 and app-server provenance JSON.
 
 The ARM64 bundle identifier remains `com.joshuasyson.CodexPad.arm64`, keeping
 it separate from the existing i686 install. No JIT/MAP_JIT entitlement is
 added by this pipeline.
+
+## Official app-server pin
+
+`Dependencies/upstreams.json` pins `rust-v0.155.0-alpha.4` to source commit
+`66eab8ece44141ff92707868269e1d53b40c4ac5`. This is an intentional
+protocol-compatible alpha release, rather than a floating latest download.
+Its protocol matches the existing GUI without changes: 166 client methods,
+11 server requests, 84 notifications and 79 required schema tokens.
+The archive SHA-256 is
+`a7f84702edac562d5bb4827507f9658cb789e76320eefd3d142eaf7a86115f86`.
+
+The M2 workflow no longer installs Rust, Zig or cargo-zigbuild, compiles Codex,
+or patches its allocator. Existing compiler caches remain preserved for local
+source-build fallback. The official executable retains upstream's allocator.
+The packager verifies its provenance against the configured source revision
+and actual binary hash, and includes both provenance and upstream LICENSE.
+Checksum and ELF checks establish artifact identity and format; guest execution
+and physical-device compatibility still require the gates below.
+
+To stage a verified download locally:
+
+```sh
+python3 scripts/download-codex-arm64.py --output artifacts/codex-app-server
+```
 
 ## Why native apk-tools is used
 

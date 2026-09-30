@@ -1,12 +1,11 @@
 # ARM64 Linux guest migration
 
-## Status (27 September 2026)
+## Status (30 September 2026)
 
-**ARM64 build integration is staged; no ARM64 iPad build has passed yet.**
-`codemagic.yaml` provides a Linux guest build and a separate Apple silicon
-unsigned iPad build. Both workflows still need their first real run. The
-existing `iSH` target continues to compile x86, with its SwiftUI client,
-i686 runtime, patches, and existing CI jobs retained.
+The active tree is ARM64-only. The single M2 Codemagic workflow downloads a
+checksum-pinned official app-server, packages Alpine aarch64, and stages the
+native SwiftUI host into the pinned ARM64 runtime. A successful hosted build
+and physical-iPad run of this release-download change remain unverified.
 
 The source of truth for the ARM64 candidate and rootfs is
 `Dependencies/arm64-runtime.json`. `upstream/ios-linuxkit` is pinned to
@@ -34,10 +33,7 @@ the final unsigned IPA's entitlements and behavior on a physical iPad.
 
 ## Architecture and seams
 
-Current: SwiftUI → guest loopback WebSocket `127.0.0.1:4500` → x86 iSH →
-Alpine x86 → static i686 Codex app-server.
-
-Target: the same SwiftUI protocol client → guest loopback WebSocket →
+Active: the same SwiftUI protocol client → guest loopback WebSocket →
 `ios-linuxkit` AArch64 userspace kernel / gadget interpreter → Alpine aarch64 →
 static `aarch64-unknown-linux-musl` Codex app-server.
 
@@ -82,9 +78,13 @@ requires a static AArch64 ELF and enables the OpenRC service. Do not package
 an iOS Mach-O executable or the old i686 ELF. The archive can grow substantially
 with package dependencies; record its compressed size and reduce it only after
 the working set is validated. Supply the resulting archive to an **ARM64**
-Xcode target explicitly. The original Xcode target still defaults to x86.
+Xcode target explicitly. Use the staged `iSH-ARM64` project.
 When adding `CODEX_BINARY`, also set `CODEX_SOURCE_DIR` to the exact pinned
 upstream checkout so the packaged licence and revision can be verified.
+
+The supported Codemagic path uses `scripts/download-codex-arm64.py`; see
+[`CODEMAGIC_ARM64.md`](CODEMAGIC_ARM64.md) for the pinned release and verification.
+The following source build remains an optional local fallback.
 
 With an exact upstream checkout, Rust 1.95.0, Zig 0.14.1, cargo-zigbuild
 0.23.4 and the ARM64 musl Rust target, run:
@@ -98,7 +98,7 @@ CODEX_SOURCE_DIR=/path/to/pinned/codex \
 The upstream pinned `codex-rs/core/Cargo.toml` already enables vendored
 `openssl-sys` for aarch64 musl. This script deliberately builds upstream
 without either i686 patch; successful linking and in-guest process/TLS probes
-are still required. For Codemagic's two workflows and unsigned IPA, see
+are still required. For Codemagic's M2 workflow and unsigned IPA, see
 [`CODEMAGIC_ARM64.md`](CODEMAGIC_ARM64.md).
 
 On an AArch64 Linux host with the fork's Meson/Ninja dependencies installed:
@@ -128,7 +128,7 @@ server, followed by repeated RPC calls and restart.
 | `patches/rust-1.95-ish-spawn.patch` | Rust Linux process launch expects `SOCK_SEQPACKET` and optionally pidfd | **Do not remove by architecture alone.** Probe ARM64 fork's Darwin socketpair and pidfd semantics, then run the pinned Rust worker-thread spawn smoke unpatched and patched as needed |
 | i686 guest syscall/stdio/COW/poll/Darwin locking repairs | Functional iSH fixes | Compare with fork and repeat guest / Darwin stress gates; retain or port a repair if missing |
 
-The pinned Codex commit remains `d77ebc72237a639b6d877f2edc3b20b54631f25e`
+The official release source pin is `66eab8ece44141ff92707868269e1d53b40c4ac5`
 with Rust 1.95.0. Build it in an isolated checkout with target
 `aarch64-unknown-linux-musl`; do not apply the x86 patch to that checkout.
 First establish whether `openssl-sys` can be built static for AArch64, then
@@ -145,7 +145,7 @@ upstream app-server implementation and JSON-RPC protocol intact.
 | ARM64 iOS Xcode target builds and boots without JIT entitlement | Pending macOS/Xcode and physical iPad |
 | `uname -m`, shell, Git, Python, ripgrep, DNS, TLS, process/signals | Pending execution of guest probe |
 | Files bridge, OpenRC and localhost WebSocket 4500 | Pending iOS integration |
-| Static ARM64 Codex app-server compile and initialize/account/model RPC | Pending ARM64 build and bridge |
+| Official static ARM64 app-server checksum / ELF and matching release protocol | Verified locally; initialize/account/model RPC still needs guest bridge |
 | Threads, turns, shell tools, approvals and repeated spawns | Pending real Codex guest run |
 | Generic MCP registration, HTTP/SSE/Streamable HTTP, OAuth callback and tool calls | Pending real Codex guest run |
 | ChatCut MCP | Pending generic MCP and OAuth; do not hardcode |
