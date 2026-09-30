@@ -69,10 +69,12 @@ class StagingTests(unittest.TestCase):
                                     darwin, re.S).group()
             initializer += re.search(r'static mach_port_t cached_host_self\(void\).*?\n}',
                                      darwin, re.S).group()
+            initializer = initializer.replace('mach_port_t', 'fixture_port_t').replace(
+                'mach_host_self', 'fixture_host_self').replace('MACH_PORT_NULL', 'FIXTURE_PORT_NULL')
             harness = Path(temporary) / 'once.c'
             harness.write_text('#include <pthread.h>\n#include <assert.h>\n'
-                'typedef int mach_port_t;\n#define MACH_PORT_NULL 0\n'
-                'static int calls;\nstatic int mach_host_self(void) { ++calls; return 42; }\n'
+                'typedef int fixture_port_t;\n#define FIXTURE_PORT_NULL 0\n'
+                'static int calls;\nstatic int fixture_host_self(void) { ++calls; return 42; }\n'
                 + initializer + '\n'
                 'static void *worker(void *unused) { (void)unused; '
                 'for (int i=0;i<1000;i++) assert(cached_host_self()==42); return 0; }\n'
