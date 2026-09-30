@@ -64,7 +64,7 @@ workflows:
           export HOMEBREW_NO_AUTO_UPDATE=1
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
           missing=()
-          for formula in llvm lld meson ninja pkgconf openssl@3 zlib zstd jq xz coreutils gnu-sed gnu-tar; do
+          for formula in llvm lld meson ninja pkgconf openssl@3 zlib zstd jq xz coreutils gnu-sed gnu-tar libarchive; do
             brew list "$formula" >/dev/null 2>&1 || missing+=("$formula")
           done
           if (( ${#missing[@]} )); then
@@ -89,6 +89,7 @@ workflows:
           python3 tests/codexpad/test_apk_bootstrap.py
           python3 tests/codexpad/test_ios_runtime_build.py
           python3 tests/codexpad/test_build_failure_summary.py
+          python3 tests/codexpad/test_imported_runtime.py
           model_bundle=/tmp/CodexPadModelRegression.app/Contents
           mkdir -p "$model_bundle/MacOS" "$model_bundle/Resources"
           cp app/CodexPad/CodexClientRequest.schema.json "$model_bundle/Resources/"
@@ -136,6 +137,7 @@ workflows:
           fi
           export OUTPUT_ROOTFS="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
           bash scripts/package-runtime-arm64.sh
+          python3 scripts/verify-imported-runtime.py "$OUTPUT_ROOTFS"
           tar -tzf "$OUTPUT_ROOTFS" | grep -F './usr/local/libexec/codexpad/codex-app-server'
           tar -xOf "$OUTPUT_ROOTFS" ./usr/local/share/codexpad/runtime.json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["hasAppServer"] and d["target"]=="aarch64-unknown-linux-musl"'
           cat "$OUTPUT_ROOTFS.sha256"
@@ -172,6 +174,7 @@ workflows:
           test -s "$app/root.tar.gz"
           test -x "$app/CodexPad"
           [[ "$(sha256sum "$app/root.tar.gz" | cut -d ' ' -f1)" == "$(sha256sum "$CODEXPAD_ROOTFS_PATH" | cut -d ' ' -f1)" ]]
+          [[ "$(sha256sum "$app/codexpad-runtime.tar.gz" | cut -d ' ' -f1)" == "$(sha256sum "$CODEXPAD_ROOTFS_PATH" | cut -d ' ' -f1)" ]]
           mkdir -p artifacts/ipa/Payload
           cp -R "$app" artifacts/ipa/Payload/CodexPad.app
           (cd artifacts/ipa && zip -qry ../CodexPad-ARM64-unsigned.ipa Payload)
