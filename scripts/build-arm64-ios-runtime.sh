@@ -54,7 +54,15 @@ if [[ -f "$build/meson-private/coredata.dat" ]]; then
     setup_args+=(--reconfigure)
 fi
 env -u SDKROOT -u IPHONEOS_DEPLOYMENT_TARGET meson "${setup_args[@]}"
-ninja -C "$build" libish.a libish_emu.a libfakefs.a
+if ninja -C "$build" libish.a libish_emu.a libfakefs.a 2>&1 | tee "$build/ninja-build.log"; then
+    :
+else
+    pipeline_status=("${PIPESTATUS[@]}")
+    status="${pipeline_status[0]}"
+    [[ "$status" != 0 ]] || status="${pipeline_status[1]}"
+    python3 "$SRCROOT/app/summarize-build-failure.py" "$build/ninja-build.log" || true
+    exit "$status"
+fi
 
 # An empty VDSO placeholder compiles but is unusable when the guest handles signals.
 python3 "$SRCROOT/app/check-arm64-elf.py" "$build/vdso/arm64/libvdso.so.elf"
