@@ -18,7 +18,11 @@ with open(os.environ['FIXTURE_LOG'], 'a') as f: f.write(name+' '+json.dumps(args
 if name == 'xcrun':
     if '--show-sdk-path' in args: print('/mock/iPhoneOS.sdk')
     elif '--find' in args: print('/mock/bin/'+args[-1])
-    elif 'lipo' in args: sys.exit(9 if os.environ.get('FIXTURE_BAD_ARCH') else 0)
+    elif 'lipo' in args:
+        # -verify_arch consumes all following arguments as architectures.
+        assert args[2:] == ['-verify_arch', 'arm64'], args
+        assert pathlib.Path(args[1]).is_file(), args
+        sys.exit(9 if os.environ.get('FIXTURE_BAD_ARCH') else 0)
 elif name == 'meson':
     if os.environ.get('FIXTURE_MESON_FAIL'): sys.exit(7)
     if os.environ.get('SDKROOT'): raise SystemExit('Native compiler inherited iOS SDKROOT')
@@ -55,6 +59,8 @@ class RuntimeBuildTests(unittest.TestCase):
         app = self.root / 'source/app'
         app.mkdir(parents=True)
         (app / 'check-arm64-elf.py').write_bytes((PROJECT / 'scripts/check-arm64-elf.py').read_bytes())
+        (app / 'summarize-build-failure.py').write_bytes(
+            (PROJECT / 'scripts/summarize-build-failure.py').read_bytes())
         self.products = self.root / 'products'
         self.log = self.root / 'calls.log'
         self.env = dict(os.environ, PATH=str(tools)+os.pathsep+os.environ['PATH'],
@@ -88,7 +94,10 @@ class RuntimeBuildTests(unittest.TestCase):
 
     def test_ninja_failure_is_not_masked(self):
         self.env['FIXTURE_NINJA_FAIL'] = '1'
-        self.assertEqual(self.run_build().returncode, 8)
+        result = self.run_build()
+        self.assertEqual(result.returncode, 8)
+        self.assertIn('No compiler error or FAILED command found', result.stdout)
+        self.assertTrue((self.root / 'meson/ninja-build.log').exists())
         self.assert_unpublished()
 
     def test_missing_archive_stops_before_publication(self):

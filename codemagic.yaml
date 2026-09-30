@@ -12,6 +12,9 @@ workflows:
       events:
         - push
       branch_patterns:
+        - pattern: "fix/complete-arm64-build"
+          include: true
+          source: true
         - pattern: "fix/codemagic-arm64-m2"
           include: true
           source: true
@@ -70,6 +73,7 @@ workflows:
           ninja --version
           python3 -m py_compile \
             scripts/check-arm64-elf.py \
+            scripts/summarize-build-failure.py \
             scripts/download-codex-arm64.py \
             scripts/prepare-arm64-ios.py \
             scripts/probe-arm64-websocket.py \
@@ -78,6 +82,7 @@ workflows:
           python3 tests/codexpad/test_release_download.py
           python3 tests/codexpad/test_apk_bootstrap.py
           python3 tests/codexpad/test_ios_runtime_build.py
+          python3 tests/codexpad/test_build_failure_summary.py
 
       - name: Download verified AArch64 Codex and build Alpine guest
         script: |
@@ -128,7 +133,7 @@ workflows:
           git submodule update --init --recursive upstream/ios-linuxkit
           python3 tests/codexpad/test_ios_staging.py
           python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
-          xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj \
+          if xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj \
             -scheme iSH-ARM64 \
             -configuration Release \
             -sdk iphoneos \
@@ -137,7 +142,15 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_ENTITLEMENTS= \
-            build 2>&1 | tee "$CM_BUILD_DIR/artifacts/xcodebuild-arm64.log"
+            build 2>&1 | tee "$CM_BUILD_DIR/artifacts/xcodebuild-arm64.log"; then
+            :
+          else
+            pipeline_status=("${PIPESTATUS[@]}")
+            status="${pipeline_status[0]}"
+            [[ "$status" != 0 ]] || status="${pipeline_status[1]}"
+            python3 scripts/summarize-build-failure.py artifacts/xcodebuild-arm64.log || true
+            exit "$status"
+          fi
           app="$CM_BUILD_DIR/artifacts/derived-arm64/Build/Products/Release-iphoneos/CodexPad.app"
           test -s "$app/root.tar.gz"
           test -x "$app/CodexPad"
@@ -149,6 +162,7 @@ workflows:
 
     artifacts:
       - artifacts/xcodebuild-arm64.log
+      - artifacts/derived-arm64/**/ninja-build.log
       - artifacts/codex-app-server.provenance.json
       - artifacts/CodexPad-ARM64-unsigned.ipa
       - artifacts/codexpad-runtime-arm64.tar.gz
