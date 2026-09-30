@@ -74,13 +74,11 @@ def main():
                       'archiveSha256': expected, 'binarySha256': sha256(binary)}
         if cached and archive != cached:
             cached.parent.mkdir(parents=True, exist_ok=True)
-            staged_cache = work / 'cache.tar.gz'
-            shutil.copyfile(archive, staged_cache)
             # Cache can reside on another filesystem.
             with tempfile.NamedTemporaryFile(dir=cached.parent, delete=False) as stream:
                 cache_temp = Path(stream.name)
             try:
-                shutil.copyfile(staged_cache, cache_temp)
+                shutil.copyfile(archive, cache_temp)
                 os.replace(cache_temp, cached)
             finally:
                 cache_temp.unlink(missing_ok=True)
