@@ -1,3 +1,19 @@
+# macOS apk-tools loading fix (30 September 2026)
+
+The reported M2 build completed apk-tools compilation, then aborted at
+`apk --version` because the copied executable referenced the uninstalled
+`@rpath/libapk.3.0.0.dylib`. The host bootstrap now selects Meson's static
+library mode, verifies that `otool -L` contains no libapk dylib dependency,
+and writes a link-mode cache stamp only after the version probe passes.
+
+Three mocked bootstrap regressions pass: rebuilding/reusing the appropriate
+cache, rejecting a remaining libapk dylib dependency, and refusing to cache a
+failed version probe. Bash syntax and Codemagic YAML validation pass. These
+are control-flow tests on Linux; a real macOS compilation/run and the rest of
+the hosted IPA build remain unverified for this fix.
+
+---
+
 # Official ARM64 release-download change (30 September 2026)
 
 Local verification for this change:
