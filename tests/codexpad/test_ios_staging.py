@@ -69,6 +69,14 @@ class StagingTests(unittest.TestCase):
             config = (output / 'app/AppARM64.xcconfig').read_text()
             self.assertIn('SWIFT_OBJC_INTERFACE_HEADER_NAME = CodexPadApp-Swift.h', config)
             self.assertIn('SWIFT_INSTALL_OBJC_HEADER = YES', config)
+            self.assertIn('OTHER_LDFLAGS = $(inherited) -lsqlite3', config)
+            runtime_phase = staging.object_definition(pbx, 'AA000300AF96D90D00FFB7A4').group()
+            self.assertIn('codexpad-build-runtime.sh', runtime_phase)
+            self.assertNotIn('ln -sf', runtime_phase)
+            for library in ('libish.a', 'libish_emu.a', 'libfakefs.a'):
+                self.assertIn('$(BUILT_PRODUCTS_DIR)/' + library, runtime_phase)
+            self.assertEqual((output / 'app/codexpad-build-runtime.sh').read_bytes(),
+                             (PROJECT / 'scripts/build-arm64-ios-runtime.sh').read_bytes())
 
 
 if __name__ == '__main__':

@@ -30,6 +30,9 @@ workflows:
         - pattern: "fix/arm64-swift-source-phase"
           include: true
           source: true
+        - pattern: "fix/arm64-meson-link-path"
+          include: true
+          source: true
         - pattern: "main"
           include: true
           source: true
@@ -52,7 +55,7 @@ workflows:
           export HOMEBREW_NO_AUTO_UPDATE=1
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
           missing=()
-          for formula in meson ninja pkgconf openssl@3 zlib zstd jq xz coreutils gnu-sed gnu-tar; do
+          for formula in llvm lld meson ninja pkgconf openssl@3 zlib zstd jq xz coreutils gnu-sed gnu-tar; do
             brew list "$formula" >/dev/null 2>&1 || missing+=("$formula")
           done
           if (( ${#missing[@]} )); then
@@ -74,6 +77,7 @@ workflows:
 
           python3 tests/codexpad/test_release_download.py
           python3 tests/codexpad/test_apk_bootstrap.py
+          python3 tests/codexpad/test_ios_runtime_build.py
 
       - name: Download verified AArch64 Codex and build Alpine guest
         script: |
@@ -119,6 +123,8 @@ workflows:
           set -euo pipefail
           export PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$(brew --prefix gnu-tar)/libexec/gnubin:/opt/homebrew/bin:/usr/local/bin:$PATH"
           export CODEXPAD_ROOTFS_PATH="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
+          export PATH="$(brew --prefix lld)/bin:$(brew --prefix llvm)/bin:$PATH"
+          command -v ld.lld
           git submodule update --init --recursive upstream/ios-linuxkit
           python3 tests/codexpad/test_ios_staging.py
           python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
@@ -131,7 +137,7 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_ENTITLEMENTS= \
-            build
+            build 2>&1 | tee "$CM_BUILD_DIR/artifacts/xcodebuild-arm64.log"
           app="$CM_BUILD_DIR/artifacts/derived-arm64/Build/Products/Release-iphoneos/CodexPad.app"
           test -s "$app/root.tar.gz"
           test -x "$app/CodexPad"
@@ -142,6 +148,7 @@ workflows:
           unzip -l artifacts/CodexPad-ARM64-unsigned.ipa | grep -F 'Payload/CodexPad.app/root.tar.gz'
 
     artifacts:
+      - artifacts/xcodebuild-arm64.log
       - artifacts/codex-app-server.provenance.json
       - artifacts/CodexPad-ARM64-unsigned.ipa
       - artifacts/codexpad-runtime-arm64.tar.gz

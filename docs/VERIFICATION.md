@@ -1,3 +1,26 @@
+# ARM64 native runtime archive handoff (30 September 2026)
+
+The reported build now compiles Swift and reaches the native linker, but fails
+with `ld: library 'ish' not found`. The pinned runtime's original shell phase
+has no fail-fast mode and creates symlinks without checking Meson/Ninja results
+or archive existence. The supplied log excerpt does not show the earlier
+Meson/Ninja diagnostic, so the exact original compile failure is not established.
+
+The staged phase now uses an explicit iOS cross file, propagates failures,
+declares all three runtime archives as Xcode outputs and verifies a real ELF
+VDSO plus ARM64 archives before copying them into `BUILT_PRODUCTS_DIR`.
+Homebrew LLVM/LLD supplies the VDSO cross linker. The app explicitly links
+SQLite, required by `libfakefs`. The original runtime submodule is unchanged.
+
+Six mocked runtime-build tests pass: successful publication, Meson failure,
+Ninja failure, missing archive, wrong architecture and empty VDSO rejection.
+Full staging against the pinned runtime passes, including source membership,
+helper installation, output paths and SQLite link settings. These checks
+verify orchestration and configuration on Linux; actual iOS archive compilation
+and the complete Xcode link still require a successful Codemagic build.
+
+---
+
 # ARM64 Swift source-phase fix (30 September 2026)
 
 The reported build reached Xcode and failed scanning `SceneDelegate.m` because
