@@ -27,6 +27,17 @@ def replace_one(value: str, old: str, new: str) -> str:
     return value.replace(old, new, 1)
 
 
+def repair_halfword_lanes(source: str) -> str:
+    # A64 single-structure halfword lanes use Q:S:size[1]. size[0] is
+    # zero in valid halfword encodings, so the fork aliases every odd lane.
+    old = "lane = (Q << 2) | (S << 1) | (size & 1);"
+    new = "lane = (Q << 2) | (S << 1) | (size >> 1);"
+    count = source.count(old)
+    if count != 2:
+        raise ValueError(f"Expected two ARM64 halfword lane decoders (found {count})")
+    return source.replace(old, new)
+
+
 def object_definition(project: str, object_id: str) -> re.Match:
     # Build-phase IDs first occur as references inside PBXNativeTarget.
     # Match their actual definitions, never the first textual occurrence.
@@ -65,6 +76,8 @@ def stage(destination: Path) -> None:
 
     shutil.copytree(FORK, destination, symlinks=True,
                     ignore=shutil.ignore_patterns(".git", "build-arm64-linux*", ".cache"))
+    decoder = destination / "asbestos/guest-arm64/gen.c"
+    decoder.write_text(repair_halfword_lanes(decoder.read_text()))
     # This pinned fork uses dispatch_once in a C translation unit without
     # importing libdispatch or enabling Clang blocks. Keep its cached Mach
     # send right, using the pthread API already imported by the file.

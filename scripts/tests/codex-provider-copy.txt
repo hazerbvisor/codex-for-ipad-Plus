@@ -1,0 +1,21 @@
+# SIMD portion of the official pinned app-server's scheme-list copy.
+# Archive SHA256: a7f84702edac562d5bb4827507f9658cb789e76320eefd3d142eaf7a86115f86
+# Disassembly addresses 0x7b17c8c..0x7b17d10; integer address setup omitted.
+# word | destination register | halfword lane | address
+7c5a0140 | 0 | 0 | 7b17c8c
+0d404980 | 0 | 1 | 7b17c9c
+0d405180 | 0 | 2 | 7b17ca4
+0d405980 | 0 | 3 | 7b17cac
+4ddf4180 | 0 | 4 | 7b17cb4
+4d4049a0 | 0 | 5 | 7b17cb8
+4d4051a0 | 0 | 6 | 7b17cc0
+4d4059a0 | 0 | 7 | 7b17cc8
+7c5a2141 | 1 | 0 | 7b17cd0
+0d4049a1 | 1 | 1 | 7b17cd4
+0d4051a1 | 1 | 2 | 7b17cdc
+0d4059a1 | 1 | 3 | 7b17ce4
+4d404181 | 1 | 4 | 7b17ce8
+4d404981 | 1 | 5 | 7b17cf0
+4d405181 | 1 | 6 | 7b17cf8
+4d405981 | 1 | 7 | 7b17d04
+4c008580 | - | - | 7b17d10
