@@ -25,6 +25,27 @@ cases; all 192 staged cases pass. Additional checks reject changed patch anchors
 and verify staging leaves the submodule untouched. Codemagic runs this gate
 before staging the tree used by its native Xcode build.
 
+## Actual guest execution
+
+`python3 scripts/tests/build_arm64_lane_guest.py --output guest-lanes.c`
+emits a standalone C fixture using the same 192 instruction words. It executes
+each word with real vector registers and checks guest memory, every vector
+lane, multi-register transfers, and base-register writeback. The generated
+program was compiled as a static AArch64 musl executable with Zig 0.14.1.
+
+On 2026-09-30 it reported `cases=192 failures=0` under QEMU directly and
+inside the repaired ios-linuxkit Linux host running under QEMU. The same guest
+executable reported `cases=192 failures=96` inside the original decoder host.
+This executes the actual ARM64 JIT gadgets, beyond the operand-only regressions.
+
+The staged Linux host's `libish.a`, `libish_emu.a` and `libfakefs.a` were built
+with Meson/Ninja and Zig targeting AArch64 glibc 2.41. The Linux experiment used
+local build-command adapters for Zig's assembly-to-stdout handling, disabled
+sanitizers for the freestanding VDSO, and allowed the fork's date/time macros.
+No runtime source changes were required. The original comparison executable
+linked the untouched pinned `gen.c` object ahead of the same runtime archives.
+This Linux build is not the native iOS Xcode build.
+
 ## Provider-list corruption
 
 The official app-server pin is `66eab8ece44141ff92707868269e1d53b40c4ac5`,
