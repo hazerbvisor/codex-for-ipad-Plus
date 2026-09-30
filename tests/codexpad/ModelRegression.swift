@@ -367,6 +367,19 @@ struct ModelRegression {
         await recovery.applicationDidBecomeActive()
         check(recovery.enginePhase.isReady && recovery.account.isAuthenticated,
               "foreground recovery reconnects and reloads saved authentication when completion notifications were missed")
+        let keyGate = Gate()
+        loginRPC.handler = { method, _ in
+            if method == "account/login/start" { return await keyGate.response() }
+            return .object(["data": .array([])])
+        }
+        let savingKey = Task { await login.signIn(apiKey: "fixture-key") }
+        await until { keyGate.continuation != nil }
+        loginRPC.event("account/login/completed", .object(["loginId": .null, "success": .bool(true)]))
+        check(login.isSigningIn, "uncorrelated API-key notification cannot unlock an in-flight save")
+        await login.signInWithChatGPT()
+        check(login.pendingLoginID == nil && login.isSigningIn, "a second login remains blocked until the API-key request finishes")
+        keyGate.release(.object(["type": .string("apiKey")]))
+        _ = await savingKey.value
         login.enginePhase = .offline(message: "fixture offline")
         loginRPC.calls.removeAll()
         await login.signInWithDeviceCode()

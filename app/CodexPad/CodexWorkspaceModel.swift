@@ -105,7 +105,6 @@ final class CodexWorkspaceModel: ObservableObject {
     @Published private(set) var pendingLoginID: String?
     var isSigningIn: Bool { isStartingSignIn || pendingLoginID != nil }
     private var loginGeneration = 0
-    private var activeLoginType: String?
     private var pendingBrowserURL: URL?
     private var earlyLoginCompletions: [String: JSONValue] = [:]
     @Published var loginURL: URL?
@@ -1176,7 +1175,6 @@ final class CodexWorkspaceModel: ObservableObject {
         let generation = loginGeneration
         isStartingSignIn = true
         let loginType = params["type"]?.stringValue
-        activeLoginType = loginType
         errorBanner = nil
         defer { if generation == loginGeneration { isStartingSignIn = false } }
         var issuedLoginID: String?
@@ -1264,7 +1262,6 @@ final class CodexWorkspaceModel: ObservableObject {
     private func resetSignInState() {
         isStartingSignIn = false
         pendingLoginID = nil
-        activeLoginType = nil
         pendingBrowserURL = nil
         earlyLoginCompletions.removeAll()
         deviceCode = nil
@@ -1281,7 +1278,9 @@ final class CodexWorkspaceModel: ObservableObject {
                 return
             }
         } else {
-            guard activeLoginType == "apiKey" else { return }
+            // API-key completion has no correlation ID. Its request response
+            // owns the UI state, so an older notification cannot unlock a new save.
+            return
         }
         resetSignInState()
         if params["success"]?.boolValue == true {
