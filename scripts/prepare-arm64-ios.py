@@ -117,7 +117,18 @@ def stage(destination: Path) -> None:
     terminal = (app / "TerminalViewController.m").read_text()
     terminal = replace_one(terminal, "@implementation TerminalViewController\n",
         "@implementation TerminalViewController\n\n"
-        "- (void)codexPadActivateInput {\n    [self.termView becomeFirstResponder];\n}\n\n"
+        "- (void)codexPadActivateInput {\n"
+        "    [self.view layoutIfNeeded];\n"
+        "    if (self.sessionTerminal == nil) {\n"
+        "        if ([AppDelegate bootError] < 0) {\n"
+        "            [self showMessage:@\"Guest runtime could not boot\"\n"
+        "                     subtitle:[NSString stringWithFormat:@\"Error %d. Open filesystem settings to inspect the installed runtime.\", [AppDelegate bootError]]];\n"
+        "            return;\n"
+        "        }\n"
+        "        [self startNewSession];\n"
+        "    }\n"
+        "    self.terminal = self.sessionTerminal;\n"
+        "    [self.termView becomeFirstResponder];\n}\n\n"
         "- (void)codexPadDeactivateInput {\n    [self.termView resignFirstResponder];\n"
         "    [self.view endEditing:YES];\n}\n")
     (app / "TerminalViewController.m").write_text(terminal)
@@ -153,6 +164,8 @@ def stage(destination: Path) -> None:
     arm_config.write_text(arm_config.read_text() + "\n"
         "// CodexPad's native SwiftUI host in the ARM64 guest target.\n"
         "PRODUCT_NAME = CodexPad\n"
+        "// Use the bundled classic-script renderer; Ghostty fetches WASM from file URLs.\n"
+        "GCC_PREPROCESSOR_DEFINITIONS = $(inherited) USE_XTERM_RENDERER=1\n"
         "PRODUCT_MODULE_NAME = CodexPadApp\n"
         "SWIFT_VERSION = 5.0\n"
         "SWIFT_OBJC_INTERFACE_HEADER_NAME = CodexPadApp-Swift.h\n"

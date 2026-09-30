@@ -118,6 +118,19 @@ class StagingTests(unittest.TestCase):
             self.assertIn('SWIFT_OBJC_INTERFACE_HEADER_NAME = CodexPadApp-Swift.h', config)
             self.assertIn('SWIFT_INSTALL_OBJC_HEADER = YES', config)
             self.assertIn('OTHER_LDFLAGS = $(inherited) -lsqlite3', config)
+            self.assertIn('USE_XTERM_RENDERER=1', config)
+            # A packaged frontend must resolve every local script and stylesheet.
+            html = (output / 'app/terminal/xterm-term.html').read_text()
+            for asset in re.findall(r'(?:src|href)="([^"]+)"', html):
+                self.assertTrue((output / 'app/terminal' / asset).is_file(), asset)
+            for asset in ('xterm-term.html', 'xterm-term-bridge.js', 'xterm-vendor'):
+                self.assertIn(asset + ' in Resources', resources)
+            controller = (output / 'app/TerminalViewController.m').read_text()
+            activation = controller.split('- (void)codexPadActivateInput {', 1)[1].split('\n}', 1)[0]
+            self.assertIn('if (self.sessionTerminal == nil)', activation)
+            self.assertIn('[self startNewSession]', activation)
+            self.assertIn('Guest runtime could not boot', activation)
+            self.assertIn('self.terminal = self.sessionTerminal', activation)
             runtime_phase = staging.object_definition(pbx, 'AA000300AF96D90D00FFB7A4').group()
             self.assertIn('codexpad-build-runtime.sh', runtime_phase)
             self.assertNotIn('ln -sf', runtime_phase)
