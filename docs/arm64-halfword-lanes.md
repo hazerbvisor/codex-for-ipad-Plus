@@ -85,7 +85,25 @@ completed in this environment with certificate verification enabled. The local
 callback returned an HTTP 200 error page; that local status is not the token
 endpoint's status. No real account credentials or authorization code were used.
 
-QEMU does not use ios-linuxkit's decoder. These results do not establish that
+The verified binary was also run inside the Linux ios-linuxkit host under
+QEMU with the custom CA setting. The original decoder reproduced both
+`installed rustls crypto provider must support ECDSA_NISTP521_SHA512` and
+`Once instance has previously been poisoned`; its invalid-code callback failed
+with a poisoned-Once panic. The repaired decoder loaded 154 certificates and
+handled the callback without either panic. However, the token exchange still
+failed before an HTTP response with `is_timeout=false`, `is_connect=true`,
+`is_request=true`. The same result persisted after copying the host proxy's
+`/etc/hosts` entry and resolver configuration into the minimal test guest.
+A separate static guest probe resolved the proxy, connected, and received
+`HTTP/1.1 200 OK` for CONNECT to `auth.openai.com:443`. A further official-binary
+probe with scoped Reqwest/Hyper/Rustls tracing logged a successful TCP connection
+and a TLS ServerHello selecting `TLS13_AES_256_GCM_SHA384`, followed by the same
+transport failure before HTTP. The nonfatal `TCP_USER_TIMEOUT` warning was
+followed by successful connection. These probes localize the remaining failure
+to TLS establishment in this setup; they do not identify its underlying cause
+or prove that the iPad failure has exactly the same cause.
+
+Direct QEMU execution does not use ios-linuxkit's decoder. These results do not establish that
 the original iPad OAuth transport failure is fixed, that missing certificates
 caused it, or that Cloudflare caused it. The repair addresses a confirmed guest
 instruction-decoding defect and explains the observed Rustls provider-list
