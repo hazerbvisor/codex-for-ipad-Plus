@@ -1,0 +1,194 @@
+# Assembled with Zig 0.14.1 clang: zig cc -target aarch64-linux-musl -c fixtures.s
+# Little-endian A64 instruction word | mnemonic (register list wraps at v31)
+0d4040bf | ld1 {v31.h}[0], [x5]
+0d4048bf | ld1 {v31.h}[1], [x5]
+0d4050bf | ld1 {v31.h}[2], [x5]
+0d4058bf | ld1 {v31.h}[3], [x5]
+4d4040bf | ld1 {v31.h}[4], [x5]
+4d4048bf | ld1 {v31.h}[5], [x5]
+4d4050bf | ld1 {v31.h}[6], [x5]
+4d4058bf | ld1 {v31.h}[7], [x5]
+0ddf40bf | ld1 {v31.h}[0], [x5], #2
+0ddf48bf | ld1 {v31.h}[1], [x5], #2
+0ddf50bf | ld1 {v31.h}[2], [x5], #2
+0ddf58bf | ld1 {v31.h}[3], [x5], #2
+4ddf40bf | ld1 {v31.h}[4], [x5], #2
+4ddf48bf | ld1 {v31.h}[5], [x5], #2
+4ddf50bf | ld1 {v31.h}[6], [x5], #2
+4ddf58bf | ld1 {v31.h}[7], [x5], #2
+0dc740bf | ld1 {v31.h}[0], [x5], x7
+0dc748bf | ld1 {v31.h}[1], [x5], x7
+0dc750bf | ld1 {v31.h}[2], [x5], x7
+0dc758bf | ld1 {v31.h}[3], [x5], x7
+4dc740bf | ld1 {v31.h}[4], [x5], x7
+4dc748bf | ld1 {v31.h}[5], [x5], x7
+4dc750bf | ld1 {v31.h}[6], [x5], x7
+4dc758bf | ld1 {v31.h}[7], [x5], x7
+0d0040bf | st1 {v31.h}[0], [x5]
+0d0048bf | st1 {v31.h}[1], [x5]
+0d0050bf | st1 {v31.h}[2], [x5]
+0d0058bf | st1 {v31.h}[3], [x5]
+4d0040bf | st1 {v31.h}[4], [x5]
+4d0048bf | st1 {v31.h}[5], [x5]
+4d0050bf | st1 {v31.h}[6], [x5]
+4d0058bf | st1 {v31.h}[7], [x5]
+0d9f40bf | st1 {v31.h}[0], [x5], #2
+0d9f48bf | st1 {v31.h}[1], [x5], #2
+0d9f50bf | st1 {v31.h}[2], [x5], #2
+0d9f58bf | st1 {v31.h}[3], [x5], #2
+4d9f40bf | st1 {v31.h}[4], [x5], #2
+4d9f48bf | st1 {v31.h}[5], [x5], #2
+4d9f50bf | st1 {v31.h}[6], [x5], #2
+4d9f58bf | st1 {v31.h}[7], [x5], #2
+0d8740bf | st1 {v31.h}[0], [x5], x7
+0d8748bf | st1 {v31.h}[1], [x5], x7
+0d8750bf | st1 {v31.h}[2], [x5], x7
+0d8758bf | st1 {v31.h}[3], [x5], x7
+4d8740bf | st1 {v31.h}[4], [x5], x7
+4d8748bf | st1 {v31.h}[5], [x5], x7
+4d8750bf | st1 {v31.h}[6], [x5], x7
+4d8758bf | st1 {v31.h}[7], [x5], x7
+0d6040bf | ld2 {v31.h, v0.h}[0], [x5]
+0d6048bf | ld2 {v31.h, v0.h}[1], [x5]
+0d6050bf | ld2 {v31.h, v0.h}[2], [x5]
+0d6058bf | ld2 {v31.h, v0.h}[3], [x5]
+4d6040bf | ld2 {v31.h, v0.h}[4], [x5]
+4d6048bf | ld2 {v31.h, v0.h}[5], [x5]
+4d6050bf | ld2 {v31.h, v0.h}[6], [x5]
+4d6058bf | ld2 {v31.h, v0.h}[7], [x5]
+0dff40bf | ld2 {v31.h, v0.h}[0], [x5], #4
+0dff48bf | ld2 {v31.h, v0.h}[1], [x5], #4
+0dff50bf | ld2 {v31.h, v0.h}[2], [x5], #4
+0dff58bf | ld2 {v31.h, v0.h}[3], [x5], #4
+4dff40bf | ld2 {v31.h, v0.h}[4], [x5], #4
+4dff48bf | ld2 {v31.h, v0.h}[5], [x5], #4
+4dff50bf | ld2 {v31.h, v0.h}[6], [x5], #4
+4dff58bf | ld2 {v31.h, v0.h}[7], [x5], #4
+0de740bf | ld2 {v31.h, v0.h}[0], [x5], x7
+0de748bf | ld2 {v31.h, v0.h}[1], [x5], x7
+0de750bf | ld2 {v31.h, v0.h}[2], [x5], x7
+0de758bf | ld2 {v31.h, v0.h}[3], [x5], x7
+4de740bf | ld2 {v31.h, v0.h}[4], [x5], x7
+4de748bf | ld2 {v31.h, v0.h}[5], [x5], x7
+4de750bf | ld2 {v31.h, v0.h}[6], [x5], x7
+4de758bf | ld2 {v31.h, v0.h}[7], [x5], x7
+0d2040bf | st2 {v31.h, v0.h}[0], [x5]
+0d2048bf | st2 {v31.h, v0.h}[1], [x5]
+0d2050bf | st2 {v31.h, v0.h}[2], [x5]
+0d2058bf | st2 {v31.h, v0.h}[3], [x5]
+4d2040bf | st2 {v31.h, v0.h}[4], [x5]
+4d2048bf | st2 {v31.h, v0.h}[5], [x5]
+4d2050bf | st2 {v31.h, v0.h}[6], [x5]
+4d2058bf | st2 {v31.h, v0.h}[7], [x5]
+0dbf40bf | st2 {v31.h, v0.h}[0], [x5], #4
+0dbf48bf | st2 {v31.h, v0.h}[1], [x5], #4
+0dbf50bf | st2 {v31.h, v0.h}[2], [x5], #4
+0dbf58bf | st2 {v31.h, v0.h}[3], [x5], #4
+4dbf40bf | st2 {v31.h, v0.h}[4], [x5], #4
+4dbf48bf | st2 {v31.h, v0.h}[5], [x5], #4
+4dbf50bf | st2 {v31.h, v0.h}[6], [x5], #4
+4dbf58bf | st2 {v31.h, v0.h}[7], [x5], #4
+0da740bf | st2 {v31.h, v0.h}[0], [x5], x7
+0da748bf | st2 {v31.h, v0.h}[1], [x5], x7
+0da750bf | st2 {v31.h, v0.h}[2], [x5], x7
+0da758bf | st2 {v31.h, v0.h}[3], [x5], x7
+4da740bf | st2 {v31.h, v0.h}[4], [x5], x7
+4da748bf | st2 {v31.h, v0.h}[5], [x5], x7
+4da750bf | st2 {v31.h, v0.h}[6], [x5], x7
+4da758bf | st2 {v31.h, v0.h}[7], [x5], x7
+0d4060bf | ld3 {v31.h, v0.h, v1.h}[0], [x5]
+0d4068bf | ld3 {v31.h, v0.h, v1.h}[1], [x5]
+0d4070bf | ld3 {v31.h, v0.h, v1.h}[2], [x5]
+0d4078bf | ld3 {v31.h, v0.h, v1.h}[3], [x5]
+4d4060bf | ld3 {v31.h, v0.h, v1.h}[4], [x5]
+4d4068bf | ld3 {v31.h, v0.h, v1.h}[5], [x5]
+4d4070bf | ld3 {v31.h, v0.h, v1.h}[6], [x5]
+4d4078bf | ld3 {v31.h, v0.h, v1.h}[7], [x5]
+0ddf60bf | ld3 {v31.h, v0.h, v1.h}[0], [x5], #6
+0ddf68bf | ld3 {v31.h, v0.h, v1.h}[1], [x5], #6
+0ddf70bf | ld3 {v31.h, v0.h, v1.h}[2], [x5], #6
+0ddf78bf | ld3 {v31.h, v0.h, v1.h}[3], [x5], #6
+4ddf60bf | ld3 {v31.h, v0.h, v1.h}[4], [x5], #6
+4ddf68bf | ld3 {v31.h, v0.h, v1.h}[5], [x5], #6
+4ddf70bf | ld3 {v31.h, v0.h, v1.h}[6], [x5], #6
+4ddf78bf | ld3 {v31.h, v0.h, v1.h}[7], [x5], #6
+0dc760bf | ld3 {v31.h, v0.h, v1.h}[0], [x5], x7
+0dc768bf | ld3 {v31.h, v0.h, v1.h}[1], [x5], x7
+0dc770bf | ld3 {v31.h, v0.h, v1.h}[2], [x5], x7
+0dc778bf | ld3 {v31.h, v0.h, v1.h}[3], [x5], x7
+4dc760bf | ld3 {v31.h, v0.h, v1.h}[4], [x5], x7
+4dc768bf | ld3 {v31.h, v0.h, v1.h}[5], [x5], x7
+4dc770bf | ld3 {v31.h, v0.h, v1.h}[6], [x5], x7
+4dc778bf | ld3 {v31.h, v0.h, v1.h}[7], [x5], x7
+0d0060bf | st3 {v31.h, v0.h, v1.h}[0], [x5]
+0d0068bf | st3 {v31.h, v0.h, v1.h}[1], [x5]
+0d0070bf | st3 {v31.h, v0.h, v1.h}[2], [x5]
+0d0078bf | st3 {v31.h, v0.h, v1.h}[3], [x5]
+4d0060bf | st3 {v31.h, v0.h, v1.h}[4], [x5]
+4d0068bf | st3 {v31.h, v0.h, v1.h}[5], [x5]
+4d0070bf | st3 {v31.h, v0.h, v1.h}[6], [x5]
+4d0078bf | st3 {v31.h, v0.h, v1.h}[7], [x5]
+0d9f60bf | st3 {v31.h, v0.h, v1.h}[0], [x5], #6
+0d9f68bf | st3 {v31.h, v0.h, v1.h}[1], [x5], #6
+0d9f70bf | st3 {v31.h, v0.h, v1.h}[2], [x5], #6
+0d9f78bf | st3 {v31.h, v0.h, v1.h}[3], [x5], #6
+4d9f60bf | st3 {v31.h, v0.h, v1.h}[4], [x5], #6
+4d9f68bf | st3 {v31.h, v0.h, v1.h}[5], [x5], #6
+4d9f70bf | st3 {v31.h, v0.h, v1.h}[6], [x5], #6
+4d9f78bf | st3 {v31.h, v0.h, v1.h}[7], [x5], #6
+0d8760bf | st3 {v31.h, v0.h, v1.h}[0], [x5], x7
+0d8768bf | st3 {v31.h, v0.h, v1.h}[1], [x5], x7
+0d8770bf | st3 {v31.h, v0.h, v1.h}[2], [x5], x7
+0d8778bf | st3 {v31.h, v0.h, v1.h}[3], [x5], x7
+4d8760bf | st3 {v31.h, v0.h, v1.h}[4], [x5], x7
+4d8768bf | st3 {v31.h, v0.h, v1.h}[5], [x5], x7
+4d8770bf | st3 {v31.h, v0.h, v1.h}[6], [x5], x7
+4d8778bf | st3 {v31.h, v0.h, v1.h}[7], [x5], x7
+0d6060bf | ld4 {v31.h, v0.h, v1.h, v2.h}[0], [x5]
+0d6068bf | ld4 {v31.h, v0.h, v1.h, v2.h}[1], [x5]
+0d6070bf | ld4 {v31.h, v0.h, v1.h, v2.h}[2], [x5]
+0d6078bf | ld4 {v31.h, v0.h, v1.h, v2.h}[3], [x5]
+4d6060bf | ld4 {v31.h, v0.h, v1.h, v2.h}[4], [x5]
+4d6068bf | ld4 {v31.h, v0.h, v1.h, v2.h}[5], [x5]
+4d6070bf | ld4 {v31.h, v0.h, v1.h, v2.h}[6], [x5]
+4d6078bf | ld4 {v31.h, v0.h, v1.h, v2.h}[7], [x5]
+0dff60bf | ld4 {v31.h, v0.h, v1.h, v2.h}[0], [x5], #8
+0dff68bf | ld4 {v31.h, v0.h, v1.h, v2.h}[1], [x5], #8
+0dff70bf | ld4 {v31.h, v0.h, v1.h, v2.h}[2], [x5], #8
+0dff78bf | ld4 {v31.h, v0.h, v1.h, v2.h}[3], [x5], #8
+4dff60bf | ld4 {v31.h, v0.h, v1.h, v2.h}[4], [x5], #8
+4dff68bf | ld4 {v31.h, v0.h, v1.h, v2.h}[5], [x5], #8
+4dff70bf | ld4 {v31.h, v0.h, v1.h, v2.h}[6], [x5], #8
+4dff78bf | ld4 {v31.h, v0.h, v1.h, v2.h}[7], [x5], #8
+0de760bf | ld4 {v31.h, v0.h, v1.h, v2.h}[0], [x5], x7
+0de768bf | ld4 {v31.h, v0.h, v1.h, v2.h}[1], [x5], x7
+0de770bf | ld4 {v31.h, v0.h, v1.h, v2.h}[2], [x5], x7
+0de778bf | ld4 {v31.h, v0.h, v1.h, v2.h}[3], [x5], x7
+4de760bf | ld4 {v31.h, v0.h, v1.h, v2.h}[4], [x5], x7
+4de768bf | ld4 {v31.h, v0.h, v1.h, v2.h}[5], [x5], x7
+4de770bf | ld4 {v31.h, v0.h, v1.h, v2.h}[6], [x5], x7
+4de778bf | ld4 {v31.h, v0.h, v1.h, v2.h}[7], [x5], x7
+0d2060bf | st4 {v31.h, v0.h, v1.h, v2.h}[0], [x5]
+0d2068bf | st4 {v31.h, v0.h, v1.h, v2.h}[1], [x5]
+0d2070bf | st4 {v31.h, v0.h, v1.h, v2.h}[2], [x5]
+0d2078bf | st4 {v31.h, v0.h, v1.h, v2.h}[3], [x5]
+4d2060bf | st4 {v31.h, v0.h, v1.h, v2.h}[4], [x5]
+4d2068bf | st4 {v31.h, v0.h, v1.h, v2.h}[5], [x5]
+4d2070bf | st4 {v31.h, v0.h, v1.h, v2.h}[6], [x5]
+4d2078bf | st4 {v31.h, v0.h, v1.h, v2.h}[7], [x5]
+0dbf60bf | st4 {v31.h, v0.h, v1.h, v2.h}[0], [x5], #8
+0dbf68bf | st4 {v31.h, v0.h, v1.h, v2.h}[1], [x5], #8
+0dbf70bf | st4 {v31.h, v0.h, v1.h, v2.h}[2], [x5], #8
+0dbf78bf | st4 {v31.h, v0.h, v1.h, v2.h}[3], [x5], #8
+4dbf60bf | st4 {v31.h, v0.h, v1.h, v2.h}[4], [x5], #8
+4dbf68bf | st4 {v31.h, v0.h, v1.h, v2.h}[5], [x5], #8
+4dbf70bf | st4 {v31.h, v0.h, v1.h, v2.h}[6], [x5], #8
+4dbf78bf | st4 {v31.h, v0.h, v1.h, v2.h}[7], [x5], #8
+0da760bf | st4 {v31.h, v0.h, v1.h, v2.h}[0], [x5], x7
+0da768bf | st4 {v31.h, v0.h, v1.h, v2.h}[1], [x5], x7
+0da770bf | st4 {v31.h, v0.h, v1.h, v2.h}[2], [x5], x7
+0da778bf | st4 {v31.h, v0.h, v1.h, v2.h}[3], [x5], x7
+4da760bf | st4 {v31.h, v0.h, v1.h, v2.h}[4], [x5], x7
+4da768bf | st4 {v31.h, v0.h, v1.h, v2.h}[5], [x5], x7
+4da770bf | st4 {v31.h, v0.h, v1.h, v2.h}[6], [x5], x7
+4da778bf | st4 {v31.h, v0.h, v1.h, v2.h}[7], [x5], x7
