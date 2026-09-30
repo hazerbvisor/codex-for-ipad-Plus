@@ -348,10 +348,10 @@ struct ModelRegression {
         await login.signInWithChatGPT()
         check(!login.isSigningIn && login.loginURL == nil && login.errorBanner == "early failure",
               "managed completion before the start response still closes the matching login")
-        let recoveryRPC = FakeRPC()
-        let recovery = model(recoveryRPC)
+        let authRecoveryRPC = FakeRPC()
+        let authRecovery = model(authRecoveryRPC)
         var recoveredAccount = false
-        recoveryRPC.handler = { method, _ in
+        authRecoveryRPC.handler = { method, _ in
             if method == "fs/readFile" {
                 let data = try JSONEncoder().encode(JSONValue.object(["codexRevision": .string(CodexFeatureCatalog.upstreamRevision!)]))
                 return .object(["dataBase64": .string(data.base64EncodedString())])
@@ -361,11 +361,11 @@ struct ModelRegression {
             }
             return .object(["data": .array([])])
         }
-        await recovery.start()
+        await authRecovery.start()
         recoveredAccount = true
-        recoveryRPC.stateHandler?(.disconnected)
-        await recovery.applicationDidBecomeActive()
-        check(recovery.enginePhase.isReady && recovery.account.isAuthenticated,
+        authRecoveryRPC.stateHandler?(.disconnected)
+        await authRecovery.applicationDidBecomeActive()
+        check(authRecovery.enginePhase.isReady && authRecovery.account.isAuthenticated,
               "foreground recovery reconnects and reloads saved authentication when completion notifications were missed")
         let keyGate = Gate()
         loginRPC.handler = { method, _ in
