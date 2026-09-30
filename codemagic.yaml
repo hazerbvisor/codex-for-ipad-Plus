@@ -12,6 +12,9 @@ workflows:
       events:
         - push
       branch_patterns:
+        - pattern: "feature/macos-codex-ui"
+          include: true
+          source: true
         - pattern: "fix/complete-arm64-build"
           include: true
           source: true

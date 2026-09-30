@@ -7,6 +7,7 @@ untouched; each build gets its own deterministic staging tree.
 
 import argparse
 import json
+import plistlib
 import re
 import shutil
 import subprocess
@@ -88,6 +89,18 @@ def stage(destination: Path) -> None:
     shutil.copy2(PROJECT / "scripts/build-arm64-ios-runtime.sh", app / "codexpad-build-runtime.sh")
     shutil.copy2(PROJECT / "scripts/check-arm64-elf.py", app / "check-arm64-elf.py")
     shutil.copy2(PROJECT / "scripts/summarize-build-failure.py", app / "summarize-build-failure.py")
+    # Overlay only Codex branding; keep the terminal's other image assets.
+    for name in ("AppIcon.appiconset", "CodexMark.imageset"):
+        target = app / "Assets.xcassets" / name
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(PROJECT / "app/Assets.xcassets" / name, target)
+    shutil.copy2(PROJECT / "app/Icons/icon.png", app / "Icons/icon.png")
+    icon_metadata = app / "Icons/Icons.plist"
+    icons = plistlib.loads(icon_metadata.read_bytes())
+    icons[""] = {"author": "OpenAI", "description": "Codex",
+                 "link": "https://openai.com/codex/"}
+    icon_metadata.write_bytes(plistlib.dumps(icons, sort_keys=False))
     codexpad = app / "CodexPad"
     codexpad.mkdir()
     for source in SWIFT_FILES:

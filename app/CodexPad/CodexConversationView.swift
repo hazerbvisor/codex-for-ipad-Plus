@@ -18,7 +18,7 @@ struct CodexConversationView: View {
             }
         }
         .background(CodexPalette.canvas)
-        .navigationTitle(model.selectedThread == nil ? "Workspace" : "")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -55,7 +55,7 @@ struct CodexConversationView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .background(CodexPalette.surface)
+        .background(CodexPalette.canvas)
     }
 
     private var timeline: some View {
@@ -91,7 +91,7 @@ struct CodexConversationView: View {
 
                     ForEach(relevantRequests) { request in
                         CodexServerRequestView(model: model, request: request)
-                        .padding(.leading, 42)
+                        .padding(.leading, 0)
                     }
 
                     if model.isTurnRunning {
@@ -157,34 +157,33 @@ private struct ComposerBar: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(spacing: 8) {
-            modelControls
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask Codex to change, explain, or verify…", text: $model.composerText, axis: .vertical)
-                    .font(.body)
-                    .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 3 : 7))
-                    .frame(minWidth: 80, maxWidth: .infinity)
-                    .focused($isFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(CodexPalette.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(isFocused ? CodexPalette.cobalt : CodexPalette.line, lineWidth: isFocused ? 1.5 : 0.5)
-                    }
-                    .accessibilityLabel("Message Codex")
-                    .accessibilityIdentifier("codexpad.composer")
-                    .onChange(of: isFocused) { _, focused in
-                        if focused { model.composerDidGainFocus() }
-                    }
-                    .onChange(of: model.composerFocusGeneration) { _, _ in
-                        guard model.desktopModeEnabled else { return }
-                        isFocused = true
-                    }
-                    .onChange(of: model.desktopModeEnabled) { _, enabled in
-                        if !enabled { isFocused = false }
-                    }
-
+        VStack(spacing: 12) {
+            TextField("Ask for follow-up changes", text: $model.composerText, axis: .vertical)
+                .font(.body)
+                .lineLimit(1...(dynamicTypeSize.isAccessibilitySize ? 3 : 7))
+                .frame(minWidth: 80, maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
+                .focused($isFocused)
+                .accessibilityLabel("Message Codex")
+                .accessibilityIdentifier("codexpad.composer")
+                .onChange(of: isFocused) { _, focused in
+                    if focused { model.composerDidGainFocus() }
+                }
+                .onChange(of: model.composerFocusGeneration) { _, _ in
+                    guard model.desktopModeEnabled else { return }
+                    isFocused = true
+                }
+                .onChange(of: model.desktopModeEnabled) { _, enabled in
+                    if !enabled { isFocused = false }
+                }
+            HStack(alignment: .center, spacing: 6) {
+                Menu {
+                    Button("Settings", systemImage: "gearshape") { model.showsSettings = true }
+                    Button("Features", systemImage: "square.grid.2x2") { model.showsFeatureCenter = true }
+                } label: {
+                    Image(systemName: "plus").frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Conversation options")
+                modelControls
                 if model.isTurnRunning {
                     Button {
                         if !model.desktopModeEnabled { isFocused = false }
@@ -193,8 +192,8 @@ private struct ComposerBar: View {
                         Image(systemName: "stop.fill")
                             .frame(width: 44, height: 44)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CodexPalette.danger)
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.circle)
+                    .tint(CodexPalette.cobalt)
                     .keyboardShortcut(".", modifiers: .command)
                     .accessibilityLabel("Stop the current turn")
                 } else {
@@ -202,37 +201,34 @@ private struct ComposerBar: View {
                         if !model.desktopModeEnabled { isFocused = false }
                         Task { await model.sendComposer() }
                     } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.body.weight(.bold))
+                        Image(systemName: "arrow.up").font(.body.weight(.semibold))
                             .frame(width: 44, height: 44)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.circle)
                     .tint(CodexPalette.cobalt)
-                    .disabled(!model.enginePhase.isReady || model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!model.enginePhase.isReady || model.isCreatingThread || model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .keyboardShortcut(.return, modifiers: .command)
                     .accessibilityLabel("Send message")
                     .accessibilityIdentifier("codexpad.send")
                 }
             }
-            HStack {
-                Label("Local iSH", systemImage: "ipad")
-                Spacer()
-                Label(
-                    model.desktopModeEnabled ? "Desktop focus on" : "Touch input",
-                    systemImage: model.desktopModeEnabled ? "keyboard" : "hand.tap"
-                )
-            }
-            .font(.caption2)
             .foregroundStyle(CodexPalette.secondaryInk)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-        .background(.bar)
+        .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
+        .background(CodexPalette.raised, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(CodexPalette.line, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
+        .padding(.horizontal, 20).padding(.vertical, 16)
+        .frame(maxWidth: 840)
+        .frame(maxWidth: .infinity)
+        .background(CodexPalette.canvas)
     }
 
     private var modelControls: some View {
-        ScrollView(.horizontal, showsIndicators: true) {
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Menu {
                     ForEach(model.availableModels.filter { !$0.hidden }) { option in
@@ -256,9 +252,9 @@ private struct ComposerBar: View {
                         }
                     }
                 } label: {
-                    Label(model.selectedModel?.displayName ?? "Model", systemImage: "cpu")
+                    Label(model.selectedModel?.displayName ?? "Model", systemImage: "chevron.down")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .disabled(model.availableModels.isEmpty)
                 .accessibilityIdentifier("codexpad.model-picker")
 
@@ -277,9 +273,9 @@ private struct ComposerBar: View {
                             }
                         }
                     } label: {
-                        Label(model.selectedReasoningEffort?.capitalized ?? "Reasoning", systemImage: "brain.head.profile")
+                        Label(model.selectedReasoningEffort?.capitalized ?? "Reasoning", systemImage: "chevron.down")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("codexpad.reasoning-picker")
 
                     if model.showsCompleteFeatureSet, !selected.serviceTiers.isEmpty {
@@ -292,7 +288,7 @@ private struct ComposerBar: View {
                             let tierName = selected.serviceTiers.first { $0.id == model.selectedServiceTier }?.name
                             Label(tierName ?? "Service tier", systemImage: "speedometer")
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.plain)
                     }
                 }
 
@@ -305,12 +301,14 @@ private struct ComposerBar: View {
                     } label: {
                         Label(model.selectedCollaborationMode ?? "Collaboration", systemImage: "person.2")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("codexpad.collaboration-picker")
                 }
             }
         }
+        .font(.subheadline)
         .controlSize(.small)
+        .frame(minHeight: 44)
     }
 }
 
@@ -322,15 +320,15 @@ private struct WorkingIndicator: View {
             Image(systemName: "sparkles")
                 .foregroundStyle(CodexPalette.cobalt)
                 .symbolEffect(.pulse, isActive: !reduceMotion)
-            Text("Codex is working on-device")
+            Text("Working…")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(CodexPalette.secondaryInk)
             Spacer()
         }
-        .padding(.leading, 43)
+        .padding(.leading, 0)
         .padding(.vertical, 16)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Codex is working on-device")
+        .accessibilityLabel("Working…")
     }
 }
 
@@ -360,17 +358,38 @@ private struct WelcomeWorkspaceView: View {
     @ObservedObject var model: CodexWorkspaceModel
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Start in your local workspace", systemImage: "ipad.gen2.landscape")
-        } description: {
-            Text("Codex runs inside the bundled iSH Linux environment. Create a thread to plan, edit, run commands, and review changes without a remote computer.")
-        } actions: {
-            Button("New thread") {
-                Task { await model.createThread() }
+        ScrollView {
+            VStack(spacing: 20) {
+                Spacer(minLength: 100)
+                Text("What will you build?")
+                    .font(.system(.largeTitle, design: .default, weight: .semibold))
+                    .foregroundStyle(CodexPalette.ink)
+                    .multilineTextAlignment(.center)
+                Button {
+                    model.showsSettings = true
+                } label: {
+                    Label(model.workspacePath.split(separator: "/").last.map(String.init) ?? model.workspacePath,
+                          systemImage: "folder")
+                        .font(.subheadline)
+                        .padding(.horizontal, 12).frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(CodexPalette.secondaryInk)
+                .accessibilityLabel("Workspace settings, \(model.workspacePath)")
+                ComposerBar(model: model)
+                if let error = model.errorBanner {
+                    ErrorBanner(message: error) { model.errorBanner = nil }
+                        .padding(.horizontal, 20)
+                }
+                Text("Start a conversation in your workspace.")
+                    .font(.footnote)
+                    .foregroundStyle(CodexPalette.secondaryInk)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut("n", modifiers: .command)
+            .frame(maxWidth: 840)
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 24)
         }
+        .scrollDismissesKeyboard(model.desktopModeEnabled ? .never : .interactively)
     }
 }
 
@@ -383,7 +402,7 @@ private struct EngineUnavailableView: View {
         } description: {
             switch model.enginePhase {
             case .offline(let message): Text(message)
-            default: Text("Preparing Alpine, fakefs, and the local Codex app-server.")
+            default: Text("Starting Codex in your workspace.")
             }
         } actions: {
             if case .offline = model.enginePhase {

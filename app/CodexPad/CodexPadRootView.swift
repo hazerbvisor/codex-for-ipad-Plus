@@ -123,6 +123,7 @@ struct CodexPadRootView: View {
         } else {
             NavigationSplitView {
                 sidebar
+                    .navigationSplitViewColumnWidth(min: 240, ideal: 260, max: 320)
             } detail: {
                 conversation
             }
@@ -213,28 +214,41 @@ struct CodexPadRootView: View {
         VStack(spacing: 0) {
             List(selection: selection) {
                 Section {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("CODEX / LOCAL")
-                            .font(.caption2.monospaced().weight(.bold))
-                            .tracking(1.2)
-                            .foregroundStyle(CodexPalette.secondaryInk)
-                        Text("Workspace")
-                            .font(.title2.bold())
-                            .foregroundStyle(CodexPalette.ink)
+                    HStack(spacing: 9) {
+                        Image("CodexMark")
+                            .resizable().scaledToFit().frame(width: 30, height: 30)
+                            .accessibilityHidden(true)
+                        Text("Codex").font(.headline)
                     }
+                    .foregroundStyle(CodexPalette.ink)
                     .listRowBackground(Color.clear)
-                    .accessibilityElement(children: .combine)
+                    Button {
+                        showsThreadBrowser = false
+                        Task { await model.createThread() }
+                    } label: {
+                        Label("New thread", systemImage: "square.and.pencil")
+                            .frame(minHeight: 32, alignment: .leading)
+                    }
+                    .disabled(!model.enginePhase.isReady || model.isCreatingThread)
+                    .accessibilityIdentifier("codexpad.sidebar-new-thread")
                 }
 
-                Section("Recent threads") {
-                    ForEach(filteredThreads) { thread in
-                        ThreadRow(thread: thread)
-                            .tag(thread.id)
-                            .contextMenu {
-                                Button("Archive", systemImage: "archivebox") {
-                                    Task { await model.archiveThread(thread.id) }
+                ForEach(workspacePaths, id: \.self) { path in
+                    Section {
+                        ForEach(filteredThreads.filter { $0.cwd == path }) { thread in
+                            ThreadRow(thread: thread)
+                                .tag(thread.id)
+                                .contextMenu {
+                                    Button("Archive", systemImage: "archivebox") {
+                                        Task { await model.archiveThread(thread.id) }
+                                    }
                                 }
-                            }
+                        }
+                    } header: {
+                        Label(path.split(separator: "/").last.map(String.init) ?? path,
+                              systemImage: "folder")
+                            .textCase(nil)
+                            .accessibilityLabel("Project, \(path)")
                     }
                 }
             }
@@ -262,13 +276,13 @@ struct CodexPadRootView: View {
             .accessibilityLabel("Account settings, \(model.account.displayName)")
             .accessibilityIdentifier("codexpad.settings")
             .buttonStyle(.plain)
-            .background(.bar)
+            .background(CodexPalette.sidebar)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("codexpad.sidebar")
-        .background(CodexPalette.canvas)
+        .background(CodexPalette.sidebar)
         .searchable(text: $searchText, placement: .sidebar, prompt: "Search threads")
-        .navigationTitle("CodexPad")
+        .navigationTitle("")
     }
 
     private var selection: Binding<String?> {
@@ -281,6 +295,11 @@ struct CodexPadRootView: View {
                 Task { await model.selectThread(id) }
             }
         )
+    }
+
+    private var workspacePaths: [String] {
+        var seen = Set<String>()
+        return filteredThreads.map(\.cwd).filter { seen.insert($0).inserted }
     }
 
     private var filteredThreads: [CodexThreadRecord] {
@@ -303,8 +322,7 @@ struct CodexPadRootView: View {
             return
         }
         didConfigureInitialLayout = true
-        showsWorkbench = !shouldPrioritizeConversation
-            && windowWidth >= 1_100
+        showsWorkbench = false
     }
 
     private var shouldPrioritizeConversation: Bool {
