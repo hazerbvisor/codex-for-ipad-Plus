@@ -11,11 +11,10 @@ struct EngineStatusPill: View {
             Text(phase.title)
                 .lineLimit(1)
         }
-        .font(.caption.weight(.semibold))
+        .font(.caption)
         .foregroundStyle(color)
         .padding(.horizontal, 10)
         .frame(minHeight: 30)
-        .background(color.opacity(0.11), in: Capsule())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Engine status, \(phase.title)")
     }
@@ -23,7 +22,7 @@ struct EngineStatusPill: View {
     private var icon: String {
         switch phase {
         case .starting, .connecting: "bolt.horizontal.circle"
-        case .ready: "ipad.and.arrow.forward"
+        case .ready: "circle.fill"
         case .offline: "pause.circle"
         }
     }
@@ -58,7 +57,7 @@ struct ThreadRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 5) {
                     Text(thread.title)
-                        .font(.body.weight(.semibold))
+                        .font(.subheadline)
                         .foregroundStyle(CodexPalette.ink)
                         .lineLimit(2)
                     if let nickname = thread.agentNickname {
@@ -70,13 +69,9 @@ struct ThreadRow: View {
                             .background(CodexPalette.cobalt.opacity(0.1), in: Capsule())
                     }
                 }
-                Text(workspaceName)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(CodexPalette.secondaryInk)
-                    .lineLimit(1)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(thread.title), \(activityLabel), \(thread.cwd)")
     }
@@ -123,27 +118,24 @@ struct TimelineCard: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            ActivityLoomMark(
-                kind: item.kind,
-                state: item.state,
-                isFirst: isFirst,
-                isLast: isLast
-            )
+        HStack(alignment: .top, spacing: 0) {
+            if item.kind == .user { Spacer(minLength: 40) }
             card
+                .frame(maxWidth: item.kind == .user ? 600 : .infinity, alignment: .leading)
         }
+        .padding(.vertical, item.kind == .agent ? 16 : 8)
         .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
     private var card: some View {
         VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(item.title, systemImage: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(accent)
-                Spacer(minLength: 12)
-                if item.kind != .user {
+            if item.kind != .user && (item.kind != .agent || item.state == .failed) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label(item.title, systemImage: icon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(item.state == .failed ? CodexPalette.danger : accent)
+                    Spacer(minLength: 12)
                     Label(stateLabel, systemImage: stateIcon)
                         .labelStyle(.titleAndIcon)
                         .font(.caption)
@@ -173,7 +165,10 @@ struct TimelineCard: View {
                 .accessibilityLabel("Output")
             }
         }
-        .codexPanel(padding: 15)
+        .padding(item.kind == .agent ? 0 : 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(item.kind == .agent ? Color.clear : CodexPalette.surface,
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(alignment: .leading) {
             if differentiateWithoutColor && item.state == .failed {
                 Rectangle().fill(CodexPalette.danger).frame(width: 4).clipShape(Capsule())

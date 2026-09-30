@@ -1,5 +1,7 @@
 """Regression for Xcode phase references appearing before their definitions."""
 import importlib.util
+import json
+import plistlib
 import re
 import shutil
 import subprocess
@@ -60,6 +62,23 @@ class StagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / 'staged'
             staging.stage(output)
+            for name in ("AppIcon.appiconset", "CodexMark.imageset"):
+                source_asset = PROJECT / "app/Assets.xcassets" / name
+                staged_asset = output / "app/Assets.xcassets" / name
+                contents = json.loads((staged_asset / "Contents.json").read_text())
+                for image in contents["images"]:
+                    filename = image["filename"]
+                    self.assertEqual((staged_asset / filename).read_bytes(),
+                                     (source_asset / filename).read_bytes())
+            self.assertEqual((output / "app/Icons/icon.png").read_bytes(),
+                             (PROJECT / "app/Icons/icon.png").read_bytes())
+            icons = plistlib.loads((output / "app/Icons/Icons.plist").read_bytes())
+            self.assertEqual(icons[""]["description"], "Codex")
+            self.assertIn("ihash1", icons)  # Preserve existing alternate icons.
+            self.assertEqual(sorted(x.name for x in (output / "app/Assets.xcassets").iterdir()
+                                    if x.name not in ("AppIcon.appiconset", "CodexMark.imageset")),
+                             sorted(x.name for x in (staging.FORK / "app/Assets.xcassets").iterdir()
+                                    if x.name not in ("AppIcon.appiconset", "CodexMark.imageset")))
             original = (staging.FORK / 'platform/darwin.c').read_text()
             darwin = (output / 'platform/darwin.c').read_text()
             self.assertIn('dispatch_once', original)

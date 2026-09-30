@@ -1,13 +1,14 @@
 import SwiftUI
 
 enum CodexPalette {
-    static let canvas = Color.dynamic(light: 0xEBF0F7, dark: 0x101722)
-    static let surface = Color.dynamic(light: 0xF8FAFD, dark: 0x182231)
-    static let raised = Color.dynamic(light: 0xFFFFFF, dark: 0x202C3D)
-    static let ink = Color.dynamic(light: 0x182235, dark: 0xEEF3FB)
-    static let secondaryInk = Color.dynamic(light: 0x627086, dark: 0xAAB7CA)
-    static let line = Color.dynamic(light: 0xD3DCE9, dark: 0x334156)
-    static let cobalt = Color.dynamic(light: 0x315FDB, dark: 0x7FA4FF)
+    static let sidebar = Color.dynamic(light: 0xF7F7F7, dark: 0x222222)
+    static let canvas = Color.dynamic(light: 0xFFFFFF, dark: 0x181818)
+    static let surface = Color.dynamic(light: 0xF5F5F5, dark: 0x252525)
+    static let raised = Color.dynamic(light: 0xFFFFFF, dark: 0x202020)
+    static let ink = Color.dynamic(light: 0x202020, dark: 0xEEEEEE)
+    static let secondaryInk = Color.dynamic(light: 0x737373, dark: 0xA3A3A3)
+    static let line = Color.dynamic(light: 0xE5E5E5, dark: 0x383838)
+    static let cobalt = Color.dynamic(light: 0x202020, dark: 0xEEEEEE)
     static let teal = Color.dynamic(light: 0x287D78, dark: 0x62C8BE)
     static let amber = Color.dynamic(light: 0xB76A22, dark: 0xF0B266)
     static let danger = Color.dynamic(light: 0xB83F4A, dark: 0xFF8992)
@@ -41,11 +42,11 @@ struct CodexPanelModifier: ViewModifier {
         content
             .padding(padding)
             .background {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(reduceTransparency ? CodexPalette.raised : CodexPalette.surface.opacity(0.92))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(CodexPalette.line.opacity(0.72), lineWidth: 0.5)
             }
     }
@@ -57,7 +58,7 @@ extension View {
     }
 
     func codexDisplayTitle() -> some View {
-        font(.system(.title2, design: .rounded, weight: .bold))
+        font(.system(.title2, design: .default, weight: .semibold))
             .foregroundStyle(CodexPalette.ink)
     }
 }
