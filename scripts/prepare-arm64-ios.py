@@ -65,6 +65,8 @@ def stage(destination: Path) -> None:
     shutil.copytree(FORK, destination, symlinks=True,
                     ignore=shutil.ignore_patterns(".git", "build-arm64-linux*", ".cache"))
     app = destination / "app"
+    shutil.copy2(PROJECT / "scripts/build-arm64-ios-runtime.sh", app / "codexpad-build-runtime.sh")
+    shutil.copy2(PROJECT / "scripts/check-arm64-elf.py", app / "check-arm64-elf.py")
     codexpad = app / "CodexPad"
     codexpad.mkdir()
     for source in SWIFT_FILES:
@@ -121,6 +123,9 @@ def stage(destination: Path) -> None:
         "SWIFT_VERSION = 5.0\n"
         "SWIFT_OBJC_INTERFACE_HEADER_NAME = CodexPadApp-Swift.h\n"
         "SWIFT_INSTALL_OBJC_HEADER = YES\n"
+        "ENABLE_USER_SCRIPT_SANDBOXING = NO\n"
+        "LIBRARY_SEARCH_PATHS = $(inherited) $(BUILT_PRODUCTS_DIR)\n"
+        "OTHER_LDFLAGS = $(inherited) -lsqlite3\n"
         "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES\n"
         "IPHONEOS_DEPLOYMENT_TARGET = 17.0\n")
 
@@ -135,6 +140,18 @@ def stage(destination: Path) -> None:
 
     pbx_path = destination / "iSH.xcodeproj/project.pbxproj"
     pbx = pbx_path.read_text()
+    runtime_phase = object_definition(pbx, "AA000300AF96D90D00FFB7A4")
+    runtime_block = runtime_phase.group()
+    script_match = re.search(r'^\t\t\tshellScript = (".*");$', runtime_block, re.M)
+    if script_match is None:
+        raise ValueError("Missing ARM64 Meson build phase script")
+    runtime_block = replace_one(runtime_block, script_match.group(),
+        "\t\t\tshellScript = " + json.dumps('set -eu\n/bin/bash "$SRCROOT/app/codexpad-build-runtime.sh"\n') + ";")
+    outputs = "".join(f'\t\t\t\t"$(BUILT_PRODUCTS_DIR)/{name}",\n'
+                      for name in ("libish.a", "libish_emu.a", "libfakefs.a"))
+    runtime_block = replace_one(runtime_block, "\t\t\toutputPaths = (\n\t\t\t);",
+                               "\t\t\toutputPaths = (\n" + outputs + "\t\t\t);")
+    pbx = pbx[:runtime_phase.start()] + runtime_block + pbx[runtime_phase.end():]
     if "CE1000000000000000000001" in pbx:
         raise ValueError("Generated Xcode identifiers collide with the pinned fork")
     build = []

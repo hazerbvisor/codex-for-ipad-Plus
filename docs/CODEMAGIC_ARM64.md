@@ -32,6 +32,22 @@ The ARM64 bundle identifier remains `com.joshuasyson.CodexPad.arm64`, keeping
 it separate from the existing i686 install. No JIT/MAP_JIT entitlement is
 added by this pipeline.
 
+## Native iOS runtime archives
+
+The staged ARM64 Meson phase calls `codexpad-build-runtime.sh` and declares
+`libish.a`, `libish_emu.a` and `libfakefs.a` in `BUILT_PRODUCTS_DIR` as outputs.
+The helper builds against the selected iOS SDK and arm64 deployment target,
+clears inherited iOS SDK variables for native build tools, and propagates
+Meson/Ninja errors. It requires a valid AArch64 ELF VDSO and checks all three
+archives with `lipo` before copying real files into Xcode's products directory.
+No symlink to a missing archive can satisfy the build phase. The app also links
+SQLite, which the fake filesystem archive requires.
+
+Homebrew LLVM and LLD supply the Linux AArch64 VDSO compiler/linker, while
+Xcode's Clang and SDK compile the native iOS host runtime. These are different
+binary formats with explicit target selection. Meson build scripts run with
+Xcode user-script sandboxing disabled because they generate a dynamic build tree.
+
 ## Swift source staging
 
 The staging script matches build-phase object definitions and validates their
