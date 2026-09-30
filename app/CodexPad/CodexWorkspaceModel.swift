@@ -101,6 +101,13 @@ final class CodexWorkspaceModel: ObservableObject {
     @Published var showsFeatureCenter = false
     var opensFeaturesAfterSettings = false
     @Published var errorBanner: String?
+    @Published private(set) var isStartingSignIn = false
+    @Published private(set) var pendingLoginID: String?
+    var isSigningIn: Bool { isStartingSignIn || pendingLoginID != nil }
+    private var loginGeneration = 0
+    private var activeLoginType: String?
+    private var pendingBrowserURL: URL?
+    private var earlyLoginCompletions: [String: JSONValue] = [:]
     @Published var loginURL: URL?
     @Published var deviceCode: String?
     @Published var deviceVerificationURL: URL?
@@ -1135,55 +1142,173 @@ final class CodexWorkspaceModel: ObservableObject {
     }
 
     func signInWithChatGPT() async {
-        do {
-            let response = try await rpc.request(
-                method: "account/login/start",
-                params: .object([
-                    "type": .string("chatgpt"),
-                    "useHostedLoginSuccessPage": .bool(true),
-                    "appBrand": .string("codex")
-                ])
-            )
-            loginURL = response["authUrl"]?.stringValue.flatMap(URL.init(string:))
-        } catch {
-            report(error, context: "Could not start ChatGPT sign-in")
-        }
+        _ = await startSignIn(params: .object([
+            "type": .string("chatgpt"),
+            "useHostedLoginSuccessPage": .bool(true),
+            "appBrand": .string("codex")
+        ]), context: "Could not start ChatGPT sign-in")
     }
 
     func signInWithDeviceCode() async {
+        _ = await startSignIn(params: .object(["type": .string("chatgptDeviceCode")]),
+                              context: "Could not start device sign-in")
+    }
+
+    @discardableResult
+    func signIn(apiKey: String) async -> Bool {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            errorBanner = "Enter an API key before saving it."
+            return false
+        }
+        return await startSignIn(params: .object([
+            "type": .string("apiKey"), "apiKey": .string(key)
+        ]), context: "Could not save the API key")
+    }
+
+    private func startSignIn(params: JSONValue, context: String) async -> Bool {
+        guard enginePhase.isReady else {
+            errorBanner = "The Codex engine is disconnected. Reconnect before signing in."
+            return false
+        }
+        guard !isSigningIn else { return false }
+        loginGeneration += 1
+        let generation = loginGeneration
+        isStartingSignIn = true
+        let loginType = params["type"]?.stringValue
+        activeLoginType = loginType
+        errorBanner = nil
+        defer { if generation == loginGeneration { isStartingSignIn = false } }
+        var issuedLoginID: String?
         do {
-            let response = try await rpc.request(
-                method: "account/login/start",
-                params: .object(["type": .string("chatgptDeviceCode")])
-            )
-            deviceCode = response["userCode"]?.stringValue
-            deviceVerificationURL = response["verificationUrl"]?.stringValue.flatMap(URL.init(string:))
+            let response = try await rpc.request(method: "account/login/start", params: params)
+            issuedLoginID = response["loginId"]?.stringValue
+            guard generation == loginGeneration else {
+                if let id = issuedLoginID {
+                    _ = try? await rpc.request(method: "account/login/cancel",
+                                               params: .object(["loginId": .string(id)]))
+                }
+                return false
+            }
+            guard response["type"]?.stringValue == params["type"]?.stringValue else {
+                throw CodexRPCError(code: nil, message: "The server returned an unexpected login response.")
+            }
+            if loginType == "apiKey" {
+                await refreshAccount()
+                await refreshModels()
+                guard generation == loginGeneration else { return false }
+                resetSignInState()
+                return true
+            }
+            guard let id = issuedLoginID, !id.isEmpty else {
+                throw CodexRPCError(code: nil, message: "The server did not return a login ID.")
+            }
+            if loginType == "chatgpt" {
+                guard let url = signInURL(response["authUrl"]) else {
+                    throw CodexRPCError(code: nil, message: "The server did not return a valid sign-in URL.")
+                }
+                pendingBrowserURL = url
+                pendingLoginID = id
+                loginURL = url
+            } else {
+                guard let code = response["userCode"]?.stringValue, !code.isEmpty,
+                      let url = signInURL(response["verificationUrl"]) else {
+                    throw CodexRPCError(code: nil, message: "The server did not return a valid device code and verification URL.")
+                }
+                pendingLoginID = id
+                deviceCode = code
+                deviceVerificationURL = url
+                pendingBrowserURL = url
+            }
+            if let completed = earlyLoginCompletions[id] {
+                completeSignIn(completed)
+            }
+            earlyLoginCompletions.removeAll()
+            return true
         } catch {
-            report(error, context: "Could not start device sign-in")
+            guard generation == loginGeneration else { return false }
+            resetSignInState()
+            report(error, context: context)
+            if let id = issuedLoginID {
+                _ = try? await rpc.request(method: "account/login/cancel",
+                                           params: .object(["loginId": .string(id)]))
+            }
+            return false
         }
     }
 
-    func signIn(apiKey: String) async {
-        guard !apiKey.isEmpty else { return }
+    private func signInURL(_ value: JSONValue?) -> URL? {
+        guard let raw = value?.stringValue, let url = URL(string: raw),
+              url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty else { return nil }
+        return url
+    }
+
+    func reopenSignInBrowser() {
+        guard pendingLoginID != nil else { return }
+        loginURL = pendingBrowserURL
+    }
+
+    func closeSignInBrowser() { loginURL = nil }
+
+    func cancelSignIn() async {
+        let id = pendingLoginID
+        loginGeneration += 1
+        resetSignInState()
+        guard let id, enginePhase.isReady else { return }
         do {
-            _ = try await rpc.request(
-                method: "account/login/start",
-                params: .object(["type": .string("apiKey"), "apiKey": .string(apiKey)])
-            )
-            await refreshAccount()
+            _ = try await rpc.request(method: "account/login/cancel",
+                                      params: .object(["loginId": .string(id)]))
+        } catch { report(error, context: "Could not cancel sign-in") }
+    }
+
+    private func resetSignInState() {
+        isStartingSignIn = false
+        pendingLoginID = nil
+        activeLoginType = nil
+        pendingBrowserURL = nil
+        earlyLoginCompletions.removeAll()
+        deviceCode = nil
+        deviceVerificationURL = nil
+        loginURL = nil
+    }
+
+    private func completeSignIn(_ params: JSONValue) {
+        if let id = params["loginId"]?.stringValue {
+            guard id == pendingLoginID else {
+                if isStartingSignIn, earlyLoginCompletions.count < 8 {
+                    earlyLoginCompletions[id] = params
+                }
+                return
+            }
+        } else {
+            guard activeLoginType == "apiKey" else { return }
+        }
+        resetSignInState()
+        if params["success"]?.boolValue == true {
+            Task { await refreshAccount(); await refreshModels(); await refreshCollaborationModes() }
+        } else {
+            errorBanner = params["error"]?.stringValue ?? "Sign-in did not complete. Try again."
+        }
+    }
+
+    func applicationDidBecomeActive() async {
+        guard !demoMode, didStart, !isConnecting else { return }
+        let generation = loginGeneration
+        if !enginePhase.isReady { await retryConnection() }
+        else { await refreshAccount() }
+        if account.isAuthenticated, generation == loginGeneration {
+            resetSignInState()
             await refreshModels()
-        } catch {
-            report(error, context: "Could not save the API key")
+            await refreshCollaborationModes()
         }
     }
 
     func signOut() async {
+        await cancelSignIn()
         do {
             _ = try await rpc.request(method: "account/logout")
             account = AccountSummary()
-            deviceCode = nil
-            deviceVerificationURL = nil
-            loginURL = nil
+            resetSignInState()
         } catch {
             report(error, context: "Could not sign out")
         }
@@ -1277,14 +1402,7 @@ final class CodexWorkspaceModel: ObservableObject {
                 appendRuntime("Codex rerouted this turn to \(toModel)")
             }
         case "account/login/completed":
-            deviceCode = nil
-            deviceVerificationURL = nil
-            loginURL = nil
-            if params["success"]?.boolValue == true {
-                Task { await refreshAccount() }
-            } else if let message = params["error"]?.stringValue {
-                errorBanner = message
-            }
+            completeSignIn(params)
         case "error":
             let message = params["error"]?["message"]?.stringValue ?? "Codex reported an error"
             errorBanner = message

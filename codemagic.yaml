@@ -12,6 +12,9 @@ workflows:
       events:
         - push
       branch_patterns:
+        - pattern: "fix/ipad-login-flow"
+          include: true
+          source: true
         - pattern: "feature/macos-codex-ui"
           include: true
           source: true
@@ -86,6 +89,17 @@ workflows:
           python3 tests/codexpad/test_apk_bootstrap.py
           python3 tests/codexpad/test_ios_runtime_build.py
           python3 tests/codexpad/test_build_failure_summary.py
+          model_bundle=/tmp/CodexPadModelRegression.app/Contents
+          mkdir -p "$model_bundle/MacOS" "$model_bundle/Resources"
+          cp app/CodexPad/CodexClientRequest.schema.json "$model_bundle/Resources/"
+          cp Dependencies/upstreams.json "$model_bundle/Resources/"
+          python3 -c 'import plistlib; from pathlib import Path; Path("/tmp/CodexPadModelRegression.app/Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable":"model-regression","CFBundleIdentifier":"com.codexpad.regression","CFBundlePackageType":"APPL"}))'
+          xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library \
+            app/CodexPad/CodexJSON.swift app/CodexPad/CodexModels.swift \
+            app/CodexPad/CodexFeatureCatalog.swift app/CodexPad/CodexRPC.swift \
+            app/CodexPad/CodexWorkspaceModel.swift tests/codexpad/ModelRegression.swift \
+            -o "$model_bundle/MacOS/model-regression"
+          "$model_bundle/MacOS/model-regression"
 
       - name: Download verified AArch64 Codex and build Alpine guest
         script: |

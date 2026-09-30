@@ -3,7 +3,6 @@ import SwiftUI
 struct CodexSettingsView: View {
     @ObservedObject var model: CodexWorkspaceModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
 
     @State private var apiKey = ""
     @State private var confirmsUnlink = false
@@ -176,24 +175,49 @@ struct CodexSettingsView: View {
                 Button("Continue with ChatGPT") {
                     Task { await model.signInWithChatGPT() }
                 }
+                .disabled(!model.enginePhase.isReady || model.isSigningIn)
                 Button("Use a device code") {
                     Task { await model.signInWithDeviceCode() }
                 }
+                .disabled(!model.enginePhase.isReady || model.isSigningIn)
                 SecureField("OpenAI API key", text: $apiKey)
                     .textContentType(.password)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                 Button("Save API key") {
-                    let key = apiKey
-                    apiKey = ""
-                    Task { await model.signIn(apiKey: key) }
+                    let submittedKey = apiKey
+                    Task {
+                        if await model.signIn(apiKey: submittedKey), apiKey == submittedKey {
+                            apiKey = ""
+                        }
+                    }
                 }
-                .disabled(apiKey.isEmpty)
+                .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          || !model.enginePhase.isReady || model.isSigningIn)
             }
 
             if let code = model.deviceCode, let url = model.deviceVerificationURL {
-                LabeledContent("Device code", value: code)
+                LabeledContent("Device code") { Text(code).font(.body.monospaced()).textSelection(.enabled) }
                 Button("Open \(url.host ?? "verification page")") {
-                    openURL(url)
+                    model.reopenSignInBrowser()
                 }
+                Text("If device login is unavailable, enable it in your ChatGPT security settings or workspace permissions.")
+                    .font(.footnote).foregroundStyle(CodexPalette.secondaryInk)
+            }
+            if model.isSigningIn {
+                HStack {
+                    ProgressView()
+                    Text(model.isStartingSignIn ? "Starting sign-in…" : "Waiting for sign-in…")
+                }
+                if model.pendingLoginID != nil && model.deviceCode == nil {
+                    Button("Reopen sign-in") { model.reopenSignInBrowser() }
+                }
+                Button("Cancel sign-in", role: .cancel) {
+                    Task { await model.cancelSignIn() }
+                }
+            }
+            if !model.enginePhase.isReady {
+                Button("Reconnect Codex engine") { Task { await model.retryConnection() } }
             }
         }
     }
@@ -231,7 +255,7 @@ struct CodexSettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
-            LabeledContent("Runtime", value: "iSH – Alpine x86")
+            LabeledContent("Runtime", value: "iSH – Alpine ARM64")
             LabeledContent("Transport", value: "Guest loopback")
         } header: {
             Text("Workspace")

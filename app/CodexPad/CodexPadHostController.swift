@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import Combine
+import SafariServices
 
 @objc(CodexPadHostViewController)
 @MainActor
@@ -9,6 +11,8 @@ public final class CodexPadHostViewController: UIViewController {
     private var workspaceController: UIHostingController<CodexPadRootView>?
     private let returnButton = UIButton(type: .system)
     private var isTerminalVisible = false
+    private var signInSubscription: AnyCancellable?
+    private weak var signInBrowser: SFSafariViewController?
 
     private static let activateTerminalInputSelector = NSSelectorFromString("codexPadActivateInput")
     private static let deactivateTerminalInputSelector = NSSelectorFromString("codexPadDeactivateInput")
@@ -74,6 +78,9 @@ public final class CodexPadHostViewController: UIViewController {
         ])
 
         setTerminalVisible(false)
+        signInSubscription = model.$loginURL.removeDuplicates().sink { [weak self] url in
+            self?.presentSignInBrowser(url)
+        }
     }
 
     public override func viewDidAppear(_ animated: Bool) {
@@ -117,6 +124,25 @@ public final class CodexPadHostViewController: UIViewController {
         setNeedsStatusBarAppearanceUpdate()
     }
 
+    private func presentSignInBrowser(_ url: URL?) {
+        guard let url else {
+            signInBrowser?.dismiss(animated: true)
+            signInBrowser = nil
+            return
+        }
+        guard signInBrowser == nil else { return }
+        // Present above Settings/Features so the guest stays in the foreground
+        // while its loopback OAuth callback or device-code polling is running.
+        var presenter: UIViewController = self
+        while let presented = presenter.presentedViewController { presenter = presented }
+        let browser = SFSafariViewController(url: url)
+        browser.delegate = self
+        browser.modalPresentationStyle = .fullScreen
+        browser.preferredControlTintColor = .label
+        signInBrowser = browser
+        presenter.present(browser, animated: true)
+    }
+
     private func deactivateTerminalInput() {
         _ = terminalViewController.perform(Self.deactivateTerminalInputSelector)
         view.endEditing(true)
@@ -129,5 +155,13 @@ public final class CodexPadHostViewController: UIViewController {
             _ = self.terminalViewController.perform(Self.deactivateTerminalInputSelector)
             self.view.endEditing(true)
         }
+    }
+}
+
+extension CodexPadHostViewController: SFSafariViewControllerDelegate {
+    public func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        // Done closes the browser; the visible Account section still offers
+        // cancellation while a device-code completion is in flight.
+        model.closeSignInBrowser()
     }
 }
