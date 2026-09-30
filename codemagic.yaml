@@ -27,6 +27,9 @@ workflows:
         - pattern: "fix/macos-apk-static-library"
           include: true
           source: true
+        - pattern: "fix/arm64-swift-source-phase"
+          include: true
+          source: true
         - pattern: "main"
           include: true
           source: true
@@ -117,6 +120,7 @@ workflows:
           export PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$(brew --prefix gnu-tar)/libexec/gnubin:/opt/homebrew/bin:/usr/local/bin:$PATH"
           export CODEXPAD_ROOTFS_PATH="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
           git submodule update --init --recursive upstream/ios-linuxkit
+          python3 tests/codexpad/test_ios_staging.py
           python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
           xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj \
             -scheme iSH-ARM64 \

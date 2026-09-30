@@ -18,7 +18,8 @@ The workflow performs the complete chain on `mac_mini_m2`:
    executable is run on the Mac and Docker/nested virtualization is not needed.
 5. Package and verify the AArch64 rootfs and static Codex ELF.
 6. Initialize the pinned `ios-linuxkit` submodule, stage the existing CodexPad
-   SwiftUI host into `iSH-ARM64`, compile without signing, and produce
+   SwiftUI host into `iSH-ARM64`, verify all 14 Swift files belong to its Sources
+   phase (and JSON files to Resources), compile without signing, and produce
    `CodexPad-ARM64-unsigned.ipa`.
 
 The workflow is configured to run on pushes to `fix/official-arm64-app-server` for
@@ -30,6 +31,16 @@ unsigned IPA, rootfs archive, rootfs SHA-256 and app-server provenance JSON.
 The ARM64 bundle identifier remains `com.joshuasyson.CodexPad.arm64`, keeping
 it separate from the existing i686 install. No JIT/MAP_JIT entitlement is
 added by this pipeline.
+
+## Swift source staging
+
+The staging script matches build-phase object definitions and validates their
+Xcode types, rather than matching an earlier target reference to the same ID.
+This prevents Swift source entries from landing in Copy Bundle Resources and
+allows Xcode to generate `CodexPadApp-Swift.h` for `SceneDelegate.m`. The target
+explicitly sets Swift 5 mode and the Objective-C interface header name.
+`tests/codexpad/test_ios_staging.py` runs after runtime submodule initialization
+to exercise the full staging path and check source/resource membership.
 
 ## Official app-server pin
 

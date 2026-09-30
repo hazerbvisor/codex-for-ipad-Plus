@@ -1,3 +1,25 @@
+# ARM64 Swift source-phase fix (30 September 2026)
+
+The reported build reached Xcode and failed scanning `SceneDelegate.m` because
+`CodexPadApp-Swift.h` was absent. All 14 Swift files were being processed as
+Copy Bundle Resources. This was reproduced with the pinned runtime project:
+the staging helper matched an earlier build-phase reference in a native target,
+then inserted entries into the next unrelated files list.
+
+The helper now selects the phase definition, verifies its type, and checks
+that every Swift build entry belongs exactly once to Sources and never to
+Resources. JSON entries are verified in Resources. The generated target config
+explicitly sets Swift 5 mode and installs `CodexPadApp-Swift.h`.
+
+Four staging regressions pass, including full staging of the real pinned
+runtime. Before: zero Swift files in Sources, 14 in Resources. After: 14 in
+Sources, zero in Resources; all Swift source files remain byte-identical.
+Python syntax, Codemagic YAML/embedded Bash, and diff checks pass.
+A real Xcode build and generated-header scan still require Codemagic; this
+Linux-host staging verification does not establish successful IPA compilation.
+
+---
+
 # macOS apk-tools loading fix (30 September 2026)
 
 The reported M2 build completed apk-tools compilation, then aborted at

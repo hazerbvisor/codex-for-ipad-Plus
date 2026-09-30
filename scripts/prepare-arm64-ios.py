@@ -26,9 +26,29 @@ def replace_one(value: str, old: str, new: str) -> str:
     return value.replace(old, new, 1)
 
 
-def insert_in_section(project: str, object_id: str, entry: str) -> str:
-    start = project.index(f"\t\t{object_id} /* ")
-    files = project.index("\t\t\tfiles = (\n", start) + len("\t\t\tfiles = (\n")
+def object_definition(project: str, object_id: str) -> re.Match:
+    # Build-phase IDs first occur as references inside PBXNativeTarget.
+    # Match their actual definitions, never the first textual occurrence.
+    pattern = rf"^\t\t{re.escape(object_id)} /\* [^\n]* \*/ = \{{\n.*?^\t\t\}};"
+    matches = list(re.finditer(pattern, project, re.M | re.S))
+    if len(matches) != 1:
+        raise ValueError(f"Expected one definition for Xcode object {object_id}")
+    return matches[0]
+
+
+def phase_files(project: str, object_id: str, phase_type: str) -> re.Match:
+    definition = object_definition(project, object_id)
+    if f"\t\t\tisa = {phase_type};\n" not in definition.group():
+        raise ValueError(f"Xcode object {object_id} is not {phase_type}")
+    files = re.search(r"\t\t\tfiles = \(\n(.*?)\t\t\t\);", definition.group(), re.S)
+    if files is None:
+        raise ValueError(f"Xcode phase {object_id} has no files list")
+    return files
+
+
+def insert_in_section(project: str, object_id: str, entry: str, phase_type: str) -> str:
+    definition = object_definition(project, object_id)
+    files = definition.start() + phase_files(project, object_id, phase_type).start(1)
     return project[:files] + entry + project[files:]
 
 
@@ -98,7 +118,9 @@ def stage(destination: Path) -> None:
         "// CodexPad's native SwiftUI host in the ARM64 guest target.\n"
         "PRODUCT_NAME = CodexPad\n"
         "PRODUCT_MODULE_NAME = CodexPadApp\n"
+        "SWIFT_VERSION = 5.0\n"
         "SWIFT_OBJC_INTERFACE_HEADER_NAME = CodexPadApp-Swift.h\n"
+        "SWIFT_INSTALL_OBJC_HEADER = YES\n"
         "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES\n"
         "IPHONEOS_DEPLOYMENT_TARGET = 17.0\n")
 
@@ -145,11 +167,28 @@ def stage(destination: Path) -> None:
     pbx = replace_one(pbx, "\t\tBB792B521F96D90D00FFB7A4 /* app */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n",
         "\t\tBB792B521F96D90D00FFB7A4 /* app */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n"
         f"\t\t\t\t{group_id} /* CodexPad */,\n")
-    pbx = insert_in_section(pbx, "AA0000081F96D90D00FFB7A4", "".join(sources))
+    source_phase = "AA0000081F96D90D00FFB7A4"
+    resource_phase = "AA000010AF96D90D00FFB7A4"
+    pbx = insert_in_section(pbx, source_phase, "".join(sources), "PBXSourcesBuildPhase")
     resource_ids = ("CE1000000000000000000101", "CE1000000000000000000102")
-    pbx = insert_in_section(pbx, "AA000010AF96D90D00FFB7A4",
+    pbx = insert_in_section(pbx, resource_phase,
         "".join(f"\t\t\t\t{ident} /* {name} in Resources */,\n"
-                for ident, name in zip(resource_ids, (SCHEMA, UPSTREAMS))))
+                for ident, name in zip(resource_ids, (SCHEMA, UPSTREAMS))),
+        "PBXResourcesBuildPhase")
+    # Membership checks catch incorrect placement even when comments elsewhere
+    # misleadingly say "in Sources", as happened in the original insertion.
+    source_members = phase_files(pbx, source_phase, "PBXSourcesBuildPhase").group(1)
+    resource_members = phase_files(pbx, resource_phase, "PBXResourcesBuildPhase").group(1)
+    target = object_definition(pbx, "AA0000011F96D90D00FFB7A4").group()
+    if source_phase not in target or resource_phase not in target:
+        raise ValueError("ARM64 target does not reference the expected build phases")
+    for index, source in enumerate(SWIFT_FILES, 1):
+        build_id = f"CE1{index:021X}"
+        if source_members.count(build_id) != 1 or build_id in resource_members:
+            raise ValueError(f"Swift source is not compiled exactly once: {source.name}")
+    for ident in resource_ids:
+        if resource_members.count(ident) != 1 or ident in source_members:
+            raise ValueError(f"JSON resource is not packaged exactly once: {ident}")
     pbx_path.write_text(pbx)
 
     # The selected Xcode target must remain the fork's ARM64 target, never the
