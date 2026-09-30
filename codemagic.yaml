@@ -24,6 +24,9 @@ workflows:
         - pattern: "fix/official-arm64-app-server"
           include: true
           source: true
+        - pattern: "fix/macos-apk-static-library"
+          include: true
+          source: true
         - pattern: "main"
           include: true
           source: true
@@ -67,6 +70,7 @@ workflows:
             scripts/validate-codex-protocol.py
 
           python3 tests/codexpad/test_release_download.py
+          python3 tests/codexpad/test_apk_bootstrap.py
 
       - name: Download verified AArch64 Codex and build Alpine guest
         script: |

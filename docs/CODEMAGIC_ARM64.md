@@ -64,7 +64,12 @@ free account. Replacing `linux_x2` with `linux` was also invalid because
 
 The rootfs packager still supports its Docker path for Linux/local builders.
 On Codemagic macOS, `APK_HOST_BINARY` selects the pinned native apk-tools
-binary instead. Package scripts and commit hooks are disabled because they are
+binary instead. The host executable embeds `libapk` through Meson
+`-Ddefault_library=static`; OpenSSL, zlib and zstd remain Homebrew host
+dependencies. A link-mode cache key rebuilds the previous shared-library
+installation, and `otool -L` plus `apk --version` must pass before caching.
+This avoids copying an executable with an unresolved
+`@rpath/libapk.3.0.0.dylib`. Package scripts and commit hooks are disabled because they are
 AArch64 Linux guest code and must not execute on the macOS build host.
 
 ## Validation gates after a successful IPA build
