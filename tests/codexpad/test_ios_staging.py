@@ -1,5 +1,8 @@
 """Regression for Xcode phase references appearing before their definitions."""
 import importlib.util
+import re
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -57,6 +60,30 @@ class StagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / 'staged'
             staging.stage(output)
+            original = (staging.FORK / 'platform/darwin.c').read_text()
+            darwin = (output / 'platform/darwin.c').read_text()
+            self.assertIn('dispatch_once', original)
+            # Compile and exercise the real staged initializer as plain C.
+            # Darwin API types are stubbed; pthread_once runs on the host.
+            initializer = re.search(r'static mach_port_t cached_host =.*?\n}\n',
+                                    darwin, re.S).group()
+            initializer += re.search(r'static mach_port_t cached_host_self\(void\).*?\n}',
+                                     darwin, re.S).group()
+            harness = Path(temporary) / 'once.c'
+            harness.write_text('#include <pthread.h>\n#include <assert.h>\n'
+                'typedef int mach_port_t;\n#define MACH_PORT_NULL 0\n'
+                'static int calls;\nstatic int mach_host_self(void) { ++calls; return 42; }\n'
+                + initializer + '\n'
+                'static void *worker(void *unused) { (void)unused; '
+                'for (int i=0;i<1000;i++) assert(cached_host_self()==42); return 0; }\n'
+                'int main(void) { pthread_t t[8]; '
+                'for(int i=0;i<8;i++) assert(pthread_create(&t[i],0,worker,0)==0); '
+                'for(int i=0;i<8;i++) assert(pthread_join(t[i],0)==0); '
+                'assert(calls==1); return 0; }\n')
+            executable = Path(temporary) / 'once'
+            subprocess.run([shutil.which('cc') or 'cc', '-std=c11', '-Wall', '-Werror',
+                            '-pthread', str(harness), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
             pbx = (output / 'iSH.xcodeproj/project.pbxproj').read_text()
             sources = staging.phase_files(pbx, SOURCE, 'PBXSourcesBuildPhase').group(1)
             resources = staging.phase_files(pbx, RESOURCE, 'PBXResourcesBuildPhase').group(1)
