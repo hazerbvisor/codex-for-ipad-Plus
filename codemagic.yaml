@@ -12,6 +12,9 @@ workflows:
       events:
         - push
       branch_patterns:
+        - pattern: "fix/complete-arm64-build"
+          include: true
+          source: true
         - pattern: "fix/codemagic-arm64-m2"
           include: true
           source: true

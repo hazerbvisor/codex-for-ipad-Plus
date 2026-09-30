@@ -64,6 +64,26 @@ def stage(destination: Path) -> None:
 
     shutil.copytree(FORK, destination, symlinks=True,
                     ignore=shutil.ignore_patterns(".git", "build-arm64-linux*", ".cache"))
+    # This pinned fork uses dispatch_once in a C translation unit without
+    # importing libdispatch or enabling Clang blocks. Keep its cached Mach
+    # send right, using the pthread API already imported by the file.
+    darwin_path = destination / "platform/darwin.c"
+    darwin = replace_one(darwin_path.read_text(),
+        "static mach_port_t cached_host_self(void) {\n"
+        "    static mach_port_t host = MACH_PORT_NULL;\n"
+        "    static dispatch_once_t once;\n"
+        "    dispatch_once(&once, ^{\n"
+        "        host = mach_host_self();\n"
+        "    });\n"
+        "    return host;\n}",
+        "static mach_port_t cached_host = MACH_PORT_NULL;\n"
+        "static pthread_once_t cached_host_once = PTHREAD_ONCE_INIT;\n"
+        "static void initialize_cached_host(void) {\n"
+        "    cached_host = mach_host_self();\n}\n"
+        "static mach_port_t cached_host_self(void) {\n"
+        "    pthread_once(&cached_host_once, initialize_cached_host);\n"
+        "    return cached_host;\n}")
+    darwin_path.write_text(darwin)
     app = destination / "app"
     shutil.copy2(PROJECT / "scripts/build-arm64-ios-runtime.sh", app / "codexpad-build-runtime.sh")
     shutil.copy2(PROJECT / "scripts/check-arm64-elf.py", app / "check-arm64-elf.py")
