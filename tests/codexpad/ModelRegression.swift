@@ -276,6 +276,116 @@ struct ModelRegression {
         check(files.linkedFolderPhase == .disconnected && files.workspacePath == "/root/previous", "cancelled Files selection preserves the previous workspace and link state")
         check(!filesRPC.calls.contains { $0.1?["command"]?.arrayValue?.first == .string("/bin/umount") }, "folder selection never silently revokes a bookmark")
 
+        let loginRPC = FakeRPC()
+        let login = model(loginRPC)
+        var loginIndex = 0
+        loginRPC.handler = { method, params in
+            if method == "account/login/start" {
+                loginIndex += 1
+                let type = params?["type"]?.stringValue ?? ""
+                if type == "apiKey" { return .object(["type": .string(type)]) }
+                return .object(["type": .string(type), "loginId": .string("login-\(loginIndex)"),
+                                "authUrl": .string("https://auth.openai.com/authorize"),
+                                "verificationUrl": .string("https://auth.openai.com/codex/device"),
+                                "userCode": .string("ABCD-1234")])
+            }
+            return .object(["data": .array([])])
+        }
+        await login.signInWithChatGPT()
+        check(login.isSigningIn && login.loginURL != nil && login.pendingLoginID == "login-1",
+              "browser login keeps an identifiable pending attempt")
+        await login.signInWithDeviceCode()
+        check(loginIndex == 1, "duplicate sign-in cannot replace the pending attempt")
+        await login.cancelSignIn()
+        check(!login.isSigningIn && login.loginURL == nil && loginRPC.calls.last?.1?["loginId"] == .string("login-1"),
+              "cancellation closes browser and cancels the matching server login")
+        await login.signInWithDeviceCode()
+        loginRPC.event("account/login/completed", .object(["loginId": .string("login-1"), "success": .bool(false), "error": .string("old failure")]))
+        check(login.deviceCode == "ABCD-1234" && login.pendingLoginID == "login-2" && login.errorBanner == nil,
+              "stale completion cannot erase a newer device-code attempt")
+        login.reopenSignInBrowser()
+        check(login.loginURL?.host == "auth.openai.com", "device verification opens the in-app sign-in browser")
+        login.closeSignInBrowser()
+        check(login.isSigningIn && login.deviceCode != nil, "closing verification preserves the pending device-code poll")
+        loginRPC.event("account/login/completed", .object(["loginId": .string("login-2"), "success": .bool(false), "error": .string("Device login disabled")]))
+        check(!login.isSigningIn && login.deviceCode == nil && login.errorBanner == "Device login disabled",
+              "matching failures clear pending state and show the actual server error")
+        let savedKey = await login.signIn(apiKey: "  fixture-key\n")
+        check(savedKey && loginRPC.calls.contains { $0.0 == "account/login/start" && $0.1?["apiKey"] == .string("fixture-key") },
+              "API key sign-in trims pasted whitespace")
+        let loginGate = Gate()
+        loginRPC.handler = { method, _ in
+            if method == "account/login/start" { return await loginGate.response() }
+            return .object([:])
+        }
+        let startingLogin = Task { await login.signInWithChatGPT() }
+        await until { loginGate.continuation != nil }
+        await login.cancelSignIn()
+        loginGate.release(.object(["type": .string("chatgpt"), "loginId": .string("late-login"), "authUrl": .string("https://auth.openai.com/authorize")]))
+        await startingLogin.value
+        check(!login.isSigningIn && login.loginURL == nil && loginRPC.calls.last?.1?["loginId"] == .string("late-login"),
+              "cancelled in-flight start cancels its late server login without reopening a browser")
+        loginRPC.handler = { _, _ in .object(["type": .string("chatgpt")]) }
+        await login.signInWithChatGPT()
+        check(!login.isSigningIn && login.errorBanner?.contains("login ID") == true,
+              "malformed server response produces an actionable error instead of doing nothing")
+        loginRPC.handler = { method, _ in
+            if method == "account/login/start" {
+                loginRPC.event("account/login/completed", .object(["loginId": .null, "success": .bool(true)]))
+                return .object(["type": .string("apiKey")])
+            }
+            return .object(["data": .array([])])
+        }
+        let earlyKey = await login.signIn(apiKey: "fixture-key")
+        check(earlyKey && !login.isSigningIn, "API key notification before the RPC response cannot turn a valid save into a malformed login")
+        loginRPC.handler = { method, _ in
+            if method == "account/login/start" {
+                loginRPC.event("account/login/completed", .object(["loginId": .string("early-login"), "success": .bool(false), "error": .string("early failure")]))
+                return .object(["type": .string("chatgpt"), "loginId": .string("early-login"), "authUrl": .string("https://auth.openai.com/authorize")])
+            }
+            return .object(["data": .array([])])
+        }
+        await login.signInWithChatGPT()
+        check(!login.isSigningIn && login.loginURL == nil && login.errorBanner == "early failure",
+              "managed completion before the start response still closes the matching login")
+        let authRecoveryRPC = FakeRPC()
+        let authRecovery = model(authRecoveryRPC)
+        var recoveredAccount = false
+        authRecoveryRPC.handler = { method, _ in
+            if method == "fs/readFile" {
+                let data = try JSONEncoder().encode(JSONValue.object(["codexRevision": .string(CodexFeatureCatalog.upstreamRevision!)]))
+                return .object(["dataBase64": .string(data.base64EncodedString())])
+            }
+            if method == "account/read", recoveredAccount {
+                return .object(["account": .object(["type": .string("chatgpt"), "email": .string("fixture@example.invalid"), "planType": .string("plus")])])
+            }
+            return .object(["data": .array([])])
+        }
+        await authRecovery.start()
+        recoveredAccount = true
+        authRecoveryRPC.stateHandler?(.disconnected)
+        await authRecovery.applicationDidBecomeActive()
+        check(authRecovery.enginePhase.isReady && authRecovery.account.isAuthenticated,
+              "foreground recovery reconnects and reloads saved authentication when completion notifications were missed")
+        let keyGate = Gate()
+        loginRPC.handler = { method, _ in
+            if method == "account/login/start" { return await keyGate.response() }
+            return .object(["data": .array([])])
+        }
+        let savingKey = Task { await login.signIn(apiKey: "fixture-key") }
+        await until { keyGate.continuation != nil }
+        loginRPC.event("account/login/completed", .object(["loginId": .null, "success": .bool(true)]))
+        check(login.isSigningIn, "uncorrelated API-key notification cannot unlock an in-flight save")
+        await login.signInWithChatGPT()
+        check(login.pendingLoginID == nil && login.isSigningIn, "a second login remains blocked until the API-key request finishes")
+        keyGate.release(.object(["type": .string("apiKey")]))
+        _ = await savingKey.value
+        login.enginePhase = .offline(message: "fixture offline")
+        loginRPC.calls.removeAll()
+        await login.signInWithDeviceCode()
+        check(loginRPC.calls.isEmpty && login.errorBanner?.contains("Reconnect") == true,
+              "offline login fails visibly without sending a broken request")
+
         let demo = CodexWorkspaceModel(demoMode: true)
         await demo.start()
         demo.composerText = "fixture send"

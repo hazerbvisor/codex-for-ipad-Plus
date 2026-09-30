@@ -5,7 +5,7 @@ struct CodexPadRootView: View {
     @ObservedObject var model: CodexWorkspaceModel
     let showTerminal: () -> Void
 
-    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -109,8 +109,8 @@ struct CodexPadRootView: View {
         .onChange(of: verticalSizeClass) { _, _ in
             prioritizeConversationIfNeeded()
         }
-        .onChange(of: model.loginURL) { _, url in
-            if let url { openURL(url) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await model.applicationDidBecomeActive() } }
         }
     }
 
