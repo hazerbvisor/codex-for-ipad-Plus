@@ -329,6 +329,44 @@ struct ModelRegression {
         await login.signInWithChatGPT()
         check(!login.isSigningIn && login.errorBanner?.contains("login ID") == true,
               "malformed server response produces an actionable error instead of doing nothing")
+        loginRPC.handler = { method, _ in
+            if method == "account/login/start" {
+                loginRPC.event("account/login/completed", .object(["loginId": .null, "success": .bool(true)]))
+                return .object(["type": .string("apiKey")])
+            }
+            return .object(["data": .array([])])
+        }
+        let earlyKey = await login.signIn(apiKey: "fixture-key")
+        check(earlyKey && !login.isSigningIn, "API key notification before the RPC response cannot turn a valid save into a malformed login")
+        loginRPC.handler = { method, _ in
+            if method == "account/login/start" {
+                loginRPC.event("account/login/completed", .object(["loginId": .string("early-login"), "success": .bool(false), "error": .string("early failure")]))
+                return .object(["type": .string("chatgpt"), "loginId": .string("early-login"), "authUrl": .string("https://auth.openai.com/authorize")])
+            }
+            return .object(["data": .array([])])
+        }
+        await login.signInWithChatGPT()
+        check(!login.isSigningIn && login.loginURL == nil && login.errorBanner == "early failure",
+              "managed completion before the start response still closes the matching login")
+        let recoveryRPC = FakeRPC()
+        let recovery = model(recoveryRPC)
+        var recoveredAccount = false
+        recoveryRPC.handler = { method, _ in
+            if method == "fs/readFile" {
+                let data = try JSONEncoder().encode(JSONValue.object(["codexRevision": .string(CodexFeatureCatalog.upstreamRevision!)]))
+                return .object(["dataBase64": .string(data.base64EncodedString())])
+            }
+            if method == "account/read", recoveredAccount {
+                return .object(["account": .object(["type": .string("chatgpt"), "email": .string("fixture@example.invalid"), "planType": .string("plus")])])
+            }
+            return .object(["data": .array([])])
+        }
+        await recovery.start()
+        recoveredAccount = true
+        recoveryRPC.stateHandler?(.disconnected)
+        await recovery.applicationDidBecomeActive()
+        check(recovery.enginePhase.isReady && recovery.account.isAuthenticated,
+              "foreground recovery reconnects and reloads saved authentication when completion notifications were missed")
         login.enginePhase = .offline(message: "fixture offline")
         loginRPC.calls.removeAll()
         await login.signInWithDeviceCode()
