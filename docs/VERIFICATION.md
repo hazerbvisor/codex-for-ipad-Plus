@@ -1,3 +1,23 @@
+# Runtime compiler failure diagnostics (30 September 2026)
+
+The latest supplied tail contains syscall function-pointer cast warnings and
+`ninja: build stopped: subcommand failed`, but no actual compiler error or
+`FAILED:` command. Exit 65 is the Xcode summary. The runtime helper now
+correctly stops at Ninja rather than publishing missing libraries. The root
+compiler failure cannot be established from this excerpt.
+
+Runtime and Xcode failures now reprint failing commands and compiler errors
+from captured full logs at the end of output. Both original process statuses
+are preserved, and the complete Ninja log is a Codemagic artifact alongside
+`xcodebuild-arm64.log`. Warnings are not suppressed or treated as the cause.
+Four summary tests (including preservation of Xcode exit 65) and six runtime
+orchestration tests pass locally. Full staging against the pinned runtime also
+passes. This is
+a diagnostic improvement; the unresolved runtime compilation failure still
+requires the full log and is not claimed fixed.
+
+---
+
 # ARM64 native runtime archive handoff (30 September 2026)
 
 The reported build now compiles Swift and reaches the native linker, but fails

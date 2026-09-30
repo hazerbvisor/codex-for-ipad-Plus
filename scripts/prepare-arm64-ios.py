@@ -67,6 +67,7 @@ def stage(destination: Path) -> None:
     app = destination / "app"
     shutil.copy2(PROJECT / "scripts/build-arm64-ios-runtime.sh", app / "codexpad-build-runtime.sh")
     shutil.copy2(PROJECT / "scripts/check-arm64-elf.py", app / "check-arm64-elf.py")
+    shutil.copy2(PROJECT / "scripts/summarize-build-failure.py", app / "summarize-build-failure.py")
     codexpad = app / "CodexPad"
     codexpad.mkdir()
     for source in SWIFT_FILES:
