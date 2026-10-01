@@ -1798,7 +1798,7 @@ final class CodexWorkspaceModel: ObservableObject {
 
     private func seedDemoWorkspace() {
         enginePhase = .ready
-        account = AccountSummary(authMode: "chatgpt", email: "219831225+j0shua-SYSON@users.noreply.github.com", plan: "pro")
+        account = AccountSummary(authMode: "chatgpt", email: "demo@example.invalid", plan: "pro")
         availableModels = [
             CodexModelOption(
                 id: "gpt-5.3-codex", model: "gpt-5.3-codex", displayName: "GPT-5.3-Codex",
