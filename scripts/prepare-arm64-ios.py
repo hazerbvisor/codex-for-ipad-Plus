@@ -99,6 +99,26 @@ def stage(destination: Path) -> None:
         "    return cached_host;\n}")
     darwin_path.write_text(darwin)
     app = destination / "app"
+    shutil.copy2(PROJECT / "scripts/CodexPadRuntimeRoot.inc", app / "CodexPadRuntimeRoot.inc")
+    roots_path = app / "Roots.m"
+    roots = replace_one(roots_path.read_text(), "@implementation Roots\n",
+                        '#include "CodexPadRuntimeRoot.inc"\n\n@implementation Roots\n')
+    roots = replace_one(roots, '[NSBundle.mainBundle URLForResource:@"root" withExtension:@"tar.gz"]',
+                        '[NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"codexpad-runtime.tar.gz"]')
+    roots_path.write_text(roots)
+    roots_header = app / "Roots.h"
+    roots_header.write_text(replace_one(roots_header.read_text(), "NS_ASSUME_NONNULL_END",
+        "BOOL CodexPadPrepareRuntimeRoot(Roots *roots, NSError **error);\n\nNS_ASSUME_NONNULL_END"))
+    delegate_path = app / "AppDelegate.m"
+    delegate = replace_one(delegate_path.read_text(),
+        "    NSURL *root = [Roots.instance rootUrl:Roots.instance.defaultRoot];",
+        "    NSError *runtimeError = nil;\n"
+        "    if (!CodexPadPrepareRuntimeRoot(Roots.instance, &runtimeError)) {\n"
+        "        NSLog(@\"CodexPad runtime preparation failed: %@\", runtimeError);\n"
+        "        return _EINVAL;\n"
+        "    }\n"
+        "    NSURL *root = [Roots.instance rootUrl:Roots.instance.defaultRoot];")
+    delegate_path.write_text(delegate)
     shutil.copy2(PROJECT / "scripts/build-arm64-ios-runtime.sh", app / "codexpad-build-runtime.sh")
     shutil.copy2(PROJECT / "scripts/check-arm64-elf.py", app / "check-arm64-elf.py")
     shutil.copy2(PROJECT / "scripts/summarize-build-failure.py", app / "summarize-build-failure.py")
@@ -197,6 +217,9 @@ def stage(destination: Path) -> None:
         'else\n'
         '    curl --fail --location "https://$ROOTFS_URL" -o "$output"\n'
         'fi'))
+    root_script.write_text(root_script.read_text() +
+        '\n# Explicit resource path used by CodexPad boot, without bundle lookup ambiguity.\n'
+        'cp "$output" "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/codexpad-runtime.tar.gz"\n')
 
     pbx_path = destination / "iSH.xcodeproj/project.pbxproj"
     pbx = pbx_path.read_text()
