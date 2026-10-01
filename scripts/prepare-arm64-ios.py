@@ -165,8 +165,14 @@ def stage(destination: Path) -> None:
 
     # Retain the ARM64 fork's kernel, app lifecycle, terminal and extended
     # Files implementation. Preserve only the original CodexPad host hooks.
+    terminal_fonts = plistlib.loads((app / "Info.plist").read_bytes())["UIAppFonts"]
     for name in ("SceneDelegate.m", "AppGroup.m", "Info.plist"):
         shutil.copy2(PROJECT / "app" / name, app / name)
+    # UIFont previews need registration as well as the font resource files.
+    # Keep CodexPad's scene/network metadata, retaining only the fork's fonts.
+    app_info = plistlib.loads((app / "Info.plist").read_bytes())
+    app_info["UIAppFonts"] = terminal_fonts
+    (app / "Info.plist").write_bytes(plistlib.dumps(app_info, sort_keys=False))
 
     terminal = (app / "TerminalViewController.m").read_text()
     terminal = replace_one(terminal, "@implementation TerminalViewController\n",
