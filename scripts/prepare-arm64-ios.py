@@ -104,7 +104,7 @@ def stage(destination: Path) -> None:
     roots = replace_one(roots_path.read_text(), "@implementation Roots\n",
                         '#include "CodexPadRuntimeRoot.inc"\n\n@implementation Roots\n')
     roots = replace_one(roots, '[NSBundle.mainBundle URLForResource:@"root" withExtension:@"tar.gz"]',
-                        '[NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"codexpad-runtime.tar.gz"]')
+                        '[NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"root.tar.gz"]')
     roots_path.write_text(roots)
     roots_header = app / "Roots.h"
     roots_header.write_text(replace_one(roots_header.read_text(), "NS_ASSUME_NONNULL_END",
@@ -217,9 +217,6 @@ def stage(destination: Path) -> None:
         'else\n'
         '    curl --fail --location "https://$ROOTFS_URL" -o "$output"\n'
         'fi'))
-    root_script.write_text(root_script.read_text() +
-        '\n# Explicit resource path used by CodexPad boot, without bundle lookup ambiguity.\n'
-        'cp "$output" "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/codexpad-runtime.tar.gz"\n')
 
     pbx_path = destination / "iSH.xcodeproj/project.pbxproj"
     pbx = pbx_path.read_text()

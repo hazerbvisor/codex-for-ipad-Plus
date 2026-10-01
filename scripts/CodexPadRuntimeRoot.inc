@@ -26,7 +26,7 @@ BOOL CodexPadPrepareRuntimeRoot(Roots *roots, NSError **error) {
     NSString *name = @"codexpad-arm64";
     for (NSUInteger index = 1; [roots.roots containsObject:name]; index++)
         name = [NSString stringWithFormat:@"codexpad-arm64-%lu", (unsigned long)index];
-    NSURL *archive = [NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"codexpad-runtime.tar.gz"];
+    NSURL *archive = [NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"root.tar.gz"];
     if (![NSFileManager.defaultManager fileExistsAtPath:archive.path] ||
         ![roots importRootFromArchive:archive name:name error:error progressReporter:nil]) return NO;
     if (!CodexPadRootHasRuntime([roots rootUrl:name])) {

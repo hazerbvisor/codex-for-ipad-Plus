@@ -90,6 +90,7 @@ workflows:
           python3 tests/codexpad/test_ios_runtime_build.py
           python3 tests/codexpad/test_build_failure_summary.py
           python3 tests/codexpad/test_imported_runtime.py
+          python3 tests/codexpad/test_ipa_runtime.py
           model_bundle=/tmp/CodexPadModelRegression.app/Contents
           mkdir -p "$model_bundle/MacOS" "$model_bundle/Resources"
           cp app/CodexPad/CodexClientRequest.schema.json "$model_bundle/Resources/"
@@ -175,11 +176,13 @@ workflows:
           test -s "$app/root.tar.gz"
           test -x "$app/CodexPad"
           [[ "$(sha256sum "$app/root.tar.gz" | cut -d ' ' -f1)" == "$(sha256sum "$CODEXPAD_ROOTFS_PATH" | cut -d ' ' -f1)" ]]
-          [[ "$(sha256sum "$app/codexpad-runtime.tar.gz" | cut -d ' ' -f1)" == "$(sha256sum "$CODEXPAD_ROOTFS_PATH" | cut -d ' ' -f1)" ]]
+          # Rebuild packaging from scratch so stale ZIP entries cannot survive.
+          rm -rf artifacts/ipa
+          rm -f artifacts/CodexPad-ARM64-unsigned.ipa
           mkdir -p artifacts/ipa/Payload
           cp -R "$app" artifacts/ipa/Payload/CodexPad.app
           (cd artifacts/ipa && zip -qry ../CodexPad-ARM64-unsigned.ipa Payload)
-          unzip -l artifacts/CodexPad-ARM64-unsigned.ipa | grep -F 'Payload/CodexPad.app/root.tar.gz'
+          python3 scripts/verify-ipa-runtime.py artifacts/CodexPad-ARM64-unsigned.ipa "$CODEXPAD_ROOTFS_PATH"
 
     artifacts:
       - artifacts/xcodebuild-arm64.log
