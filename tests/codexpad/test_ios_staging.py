@@ -119,6 +119,16 @@ class StagingTests(unittest.TestCase):
             self.assertIn('SWIFT_INSTALL_OBJC_HEADER = YES', config)
             self.assertIn('OTHER_LDFLAGS = $(inherited) -lsqlite3', config)
             self.assertIn('USE_XTERM_RENDERER=1', config)
+            roots = (output / 'app/Roots.m').read_text()
+            self.assertIn('URLByAppendingPathComponent:@"root.tar.gz"', roots)
+            self.assertNotIn('URLForResource:@"root"', roots)
+            self.assertEqual((output / 'app/CodexPadRuntimeRoot.inc').read_bytes(),
+                             (PROJECT / 'scripts/CodexPadRuntimeRoot.inc').read_bytes())
+            delegate = (output / 'app/AppDelegate.m').read_text()
+            self.assertLess(delegate.index('CodexPadPrepareRuntimeRoot'), delegate.index('mount_root(&fakefs'))
+            download = (output / 'app/download-root.sh').read_text()
+            self.assertNotIn('codexpad-runtime.tar.gz', download)
+            self.assertNotIn('codexpad-runtime.tar.gz', resources)
             # A packaged frontend must resolve every local script and stylesheet.
             html = (output / 'app/terminal/xterm-term.html').read_text()
             for asset in re.findall(r'(?:src|href)="([^"]+)"', html):
