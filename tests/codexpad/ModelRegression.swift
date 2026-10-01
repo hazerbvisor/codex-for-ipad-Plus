@@ -348,6 +348,20 @@ struct ModelRegression {
         await login.signInWithChatGPT()
         check(!login.isSigningIn && login.loginURL == nil && login.errorBanner == "early failure",
               "managed completion before the start response still closes the matching login")
+        let privateError = "https://auth.example/authorize?state=private-state&code=private-code fixture@example.invalid"
+        loginRPC.handler = { _, _ in throw CodexRPCError(code: -32000, message: privateError) }
+        await login.signInWithChatGPT()
+        check(login.errorBanner?.contains(privateError) == true,
+              "authentication errors remain actionable in the UI")
+        check(login.runtimeLog.contains("authentication.start.failed rpc code=-32000") &&
+              !login.runtimeLog.joined().contains("private-state") &&
+              !login.runtimeLog.joined().contains("fixture@example.invalid"),
+              "authentication diagnostics contain numeric error codes without private server messages")
+        check(codexDiagnosticFailure(URLError(.cannotConnectToHost)) == "transport code=-1004",
+              "transport errors can be distinguished from RPC rejections without logging URLs")
+        loginRPC.event("warning", .object(["message": .string(privateError)]))
+        check(login.errorBanner == privateError && !login.runtimeLog.joined().contains("private-state"),
+              "server notices remain visible without copying private messages into diagnostic logs")
         let authRecoveryRPC = FakeRPC()
         let authRecovery = model(authRecoveryRPC)
         var recoveredAccount = false

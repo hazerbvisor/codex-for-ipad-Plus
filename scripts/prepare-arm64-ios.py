@@ -38,6 +38,25 @@ def repair_halfword_lanes(source: str) -> str:
     return source.replace(old, new)
 
 
+def repair_pmull_aliasing(source: str) -> str:
+    # PMULL reads both complete source vectors before writing Vd. GHASH's
+    # baseline NEON path repeatedly aliases Vd with Vn or Vm; writing a
+    # halfword per iteration otherwise destroys unread source bytes.
+    source = replace_one(source,
+        "        uint16_t *dst = (uint16_t *)rd;\n"
+        "        uint8_t *src_n = Q ? &rn[8] : rn;\n"
+        "        uint8_t *src_m = Q ? &rm[8] : rm;",
+        "        uint16_t result_lanes[8];\n"
+        "        uint16_t *dst = result_lanes;\n"
+        "        const uint8_t *src_n = Q ? &rn[8] : rn;\n"
+        "        const uint8_t *src_m = Q ? &rm[8] : rm;")
+    return replace_one(source,
+        "            dst[i] = result;\n        }\n    } else if (size == 3) {",
+        "            dst[i] = result;\n        }\n"
+        "        memcpy(rd, result_lanes, sizeof(result_lanes));\n"
+        "    } else if (size == 3) {")
+
+
 def object_definition(project: str, object_id: str) -> re.Match:
     # Build-phase IDs first occur as references inside PBXNativeTarget.
     # Match their actual definitions, never the first textual occurrence.
@@ -78,6 +97,8 @@ def stage(destination: Path) -> None:
                     ignore=shutil.ignore_patterns(".git", "build-arm64-linux*", ".cache"))
     decoder = destination / "asbestos/guest-arm64/gen.c"
     decoder.write_text(repair_halfword_lanes(decoder.read_text()))
+    crypto = destination / "asbestos/guest-arm64/crypto_helpers.c"
+    crypto.write_text(repair_pmull_aliasing(crypto.read_text()))
     # This pinned fork uses dispatch_once in a C translation unit without
     # importing libdispatch or enabling Clang blocks. Keep its cached Mach
     # send right, using the pthread API already imported by the file.

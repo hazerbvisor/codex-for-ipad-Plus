@@ -265,6 +265,7 @@ final class CodexWorkspaceModel: ObservableObject {
             enginePhase = .connecting(attempt: attempt)
             do {
                 try await rpc.connect()
+                appendRuntime("protocol.initialize.ok")
                 do {
                     try await verifyRuntimeRevision()
                 } catch {
@@ -272,7 +273,7 @@ final class CodexWorkspaceModel: ObservableObject {
                     let message = "The saved guest runtime does not match this app. Export a backup and import the matching CodexPad runtime from Terminal's filesystem settings. Existing projects and credentials have not been changed. \(error.localizedDescription)"
                     enginePhase = .offline(message: message)
                     errorBanner = message
-                    appendRuntime(message)
+                    appendRuntime("runtime.validation.failed \(codexDiagnosticFailure(error))")
                     return
                 }
                 enginePhase = .ready
@@ -284,7 +285,7 @@ final class CodexWorkspaceModel: ObservableObject {
                 await refreshThreads()
                 return
             } catch {
-                appendRuntime("Engine probe \(attempt) failed: \(error.localizedDescription)")
+                appendRuntime("engine.connect.failed attempt=\(attempt) \(codexDiagnosticFailure(error))")
                 if attempt < 10 {
                     do { try await Task.sleep(for: .milliseconds(Int64(350 + attempt * 180))) }
                     catch { rpc.disconnect(); return }
@@ -367,6 +368,7 @@ final class CodexWorkspaceModel: ObservableObject {
             )
             guard let raw = response["account"], raw != .null else {
                 account = AccountSummary()
+                appendRuntime("authentication.account.read.ok authenticated=false")
                 return
             }
             account = AccountSummary(
@@ -374,7 +376,9 @@ final class CodexWorkspaceModel: ObservableObject {
                 email: raw["email"]?.stringValue,
                 plan: raw["planType"]?.stringValue
             )
+            appendRuntime("authentication.account.read.ok authenticated=\(account.isAuthenticated)")
         } catch {
+            appendRuntime("authentication.account.read.failed \(codexDiagnosticFailure(error))")
             report(error, context: "Could not read account")
         }
     }
@@ -441,7 +445,7 @@ final class CodexWorkspaceModel: ObservableObject {
         } catch {
             // Collaboration presets are experimental. Keep ordinary model and
             // effort controls usable if an older compatible server omits them.
-            appendRuntime("Collaboration presets unavailable: \(error.localizedDescription)")
+            appendRuntime("collaboration.presets.failed \(codexDiagnosticFailure(error))")
         }
     }
 
@@ -508,7 +512,8 @@ final class CodexWorkspaceModel: ObservableObject {
                         threads[index].cwd = linkedFolderGuestPath
                     }
                 } catch {
-                    appendRuntime("Folder linked; current thread kept its previous cwd: \(error.localizedDescription)")
+                    errorBanner = "Folder linked; current thread kept its previous cwd: \(error.localizedDescription)"
+                    appendRuntime("files.thread.cwd.update.failed \(codexDiagnosticFailure(error))")
                 }
             }
             await loadDirectory(linkedFolderGuestPath)
@@ -703,7 +708,7 @@ final class CodexWorkspaceModel: ObservableObject {
             return response.prettyPrinted
         } catch {
             let message = "\(method) failed: \(error.localizedDescription)"
-            appendRuntime(message)
+            appendRuntime("rpc.request.failed method=\(method) \(codexDiagnosticFailure(error))")
             return message
         }
     }
@@ -1174,6 +1179,7 @@ final class CodexWorkspaceModel: ObservableObject {
         loginGeneration += 1
         let generation = loginGeneration
         isStartingSignIn = true
+        appendRuntime("authentication.start.requested")
         let loginType = params["type"]?.stringValue
         errorBanner = nil
         defer { if generation == loginGeneration { isStartingSignIn = false } }
@@ -1208,6 +1214,7 @@ final class CodexWorkspaceModel: ObservableObject {
                 pendingBrowserURL = url
                 pendingLoginID = id
                 loginURL = url
+                appendRuntime("authentication.browser.ready")
             } else {
                 guard let code = response["userCode"]?.stringValue, !code.isEmpty,
                       let url = signInURL(response["verificationUrl"]) else {
@@ -1226,6 +1233,7 @@ final class CodexWorkspaceModel: ObservableObject {
         } catch {
             guard generation == loginGeneration else { return false }
             resetSignInState()
+            appendRuntime("authentication.start.failed \(codexDiagnosticFailure(error))")
             report(error, context: context)
             if let id = issuedLoginID {
                 _ = try? await rpc.request(method: "account/login/cancel",
@@ -1284,8 +1292,10 @@ final class CodexWorkspaceModel: ObservableObject {
         }
         resetSignInState()
         if params["success"]?.boolValue == true {
+            appendRuntime("authentication.completed.ok")
             Task { await refreshAccount(); await refreshModels(); await refreshCollaborationModes() }
         } else {
+            appendRuntime("authentication.completed.failed")
             errorBanner = params["error"]?.stringValue ?? "Sign-in did not complete. Try again."
         }
     }
@@ -1397,18 +1407,19 @@ final class CodexWorkspaceModel: ObservableObject {
                 effort: selectedReasoningEffort,
                 serviceTier: selectedServiceTier
             )
-            if let toModel = params["toModel"]?.stringValue {
-                appendRuntime("Codex rerouted this turn to \(toModel)")
+            if params["toModel"]?.stringValue != nil {
+                appendRuntime("model.rerouted")
             }
         case "account/login/completed":
             completeSignIn(params)
         case "error":
             let message = params["error"]?["message"]?.stringValue ?? "Codex reported an error"
             errorBanner = message
-            appendRuntime(message)
+            appendRuntime("server.error")
         case "warning", "guardianWarning", "deprecationNotice", "configWarning":
             if let message = params["message"]?.stringValue {
-                appendRuntime(message)
+                if errorBanner == nil { errorBanner = message }
+                appendRuntime("server.notice method=\(method)")
             }
         default:
             break
@@ -1613,7 +1624,8 @@ final class CodexWorkspaceModel: ObservableObject {
                 message: "The saved Files permission needs to be selected again."
             )
             workspacePath = "/root/workspace"
-            appendRuntime("Saved Files workspace was not mounted: \(error.localizedDescription)")
+            errorBanner = "Saved Files workspace was not mounted: \(error.localizedDescription)"
+            appendRuntime("files.saved.workspace.mount.failed \(codexDiagnosticFailure(error))")
         }
     }
 
@@ -1793,7 +1805,7 @@ final class CodexWorkspaceModel: ObservableObject {
     private func report(_ error: Error, context: String) {
         let message = "\(context): \(error.localizedDescription)"
         errorBanner = message
-        appendRuntime(message)
+        appendRuntime("operation.failed \(codexDiagnosticFailure(error))")
     }
 
     private func seedDemoWorkspace() {

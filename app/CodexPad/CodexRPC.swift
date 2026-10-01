@@ -14,6 +14,17 @@ struct CodexRPCError: LocalizedError, Equatable, Sendable {
     var isRetryable: Bool { code == -32001 }
 }
 
+// Diagnostic logs must never include server messages, URLs, payloads or paths.
+// The UI can still show the actionable error returned by the operation.
+func codexDiagnosticFailure(_ error: Error) -> String {
+    if let error = error as? URLError { return "transport code=\(error.code.rawValue)" }
+    if let error = error as? CodexRPCError {
+        return "rpc code=\(error.code.map { String($0) } ?? "none")"
+    }
+    if error is CancellationError { return "cancelled" }
+    return "local-error"
+}
+
 @MainActor
 protocol CodexRPCServing: AnyObject {
     var inboundHandler: ((RPCInbound) -> Void)? { get set }

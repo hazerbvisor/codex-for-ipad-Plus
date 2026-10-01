@@ -1,0 +1,167 @@
+#!/usr/bin/python3
+"""Read-only, redacted diagnostics; never read auth files or print RPC payloads."""
+import base64
+import hashlib
+import http.client
+import json
+import os
+from pathlib import Path
+import socket
+import struct
+
+
+class ProbeFailure(Exception):
+    def __init__(self, status):
+        self.status = status
+
+
+def exact(connection, length):
+    data = bytearray()
+    while len(data) < length:
+        chunk = connection.recv(length - len(data))
+        if not chunk:
+            raise ProbeFailure('closed')
+        data.extend(chunk)
+    return bytes(data)
+
+
+def send_frame(connection, payload, opcode=1):
+    mask = os.urandom(4)
+    size = len(payload)
+    header = bytes([0x80 | opcode, 0x80 | size]) if size < 126 else bytes([0x80 | opcode, 0xfe]) + struct.pack('!H', size)
+    connection.sendall(header + mask + bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload)))
+
+
+def message(connection):
+    data = bytearray()
+    for _ in range(64):
+        first, second = exact(connection, 2)
+        length = second & 127
+        if length == 126:
+            length = struct.unpack('!H', exact(connection, 2))[0]
+        elif length == 127:
+            length = struct.unpack('!Q', exact(connection, 8))[0]
+        if second & 128 or length + len(data) > 1024 * 1024:
+            raise ProbeFailure('invalid-frame')
+        payload = exact(connection, length)
+        opcode = first & 15
+        if opcode == 8:
+            raise ProbeFailure('closed')
+        if opcode == 9:
+            if length > 125:
+                raise ProbeFailure('invalid-frame')
+            send_frame(connection, payload, 10)
+            continue
+        if opcode == 10:
+            continue
+        if opcode not in (0, 1):
+            raise ProbeFailure('invalid-frame')
+        data.extend(payload)
+        if first & 128:
+            return json.loads(data)
+    raise ProbeFailure('message-limit')
+
+
+def websocket():
+    connection = socket.create_connection(('127.0.0.1', 4500), timeout=5)
+    try:
+        key = base64.b64encode(os.urandom(16)).decode()
+        connection.sendall(('GET / HTTP/1.1\r\nHost: 127.0.0.1:4500\r\nUpgrade: websocket\r\n'
+                            'Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\n'
+                            f'Sec-WebSocket-Key: {key}\r\n\r\n').encode())
+        response = bytearray()
+        while not response.endswith(b'\r\n\r\n') and len(response) < 8192:
+            response.extend(exact(connection, 1))
+        headers = bytes(response).decode('ascii').split('\r\n')
+        accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
+        fields = {line.split(':', 1)[0].lower(): line.split(':', 1)[1].strip()
+                  for line in headers[1:] if ':' in line}
+        if not headers[0].startswith('HTTP/1.1 101 ') or fields.get('sec-websocket-accept') != accept:
+            raise ProbeFailure('handshake-rejected')
+        return connection
+    except Exception:
+        connection.close()
+        raise
+
+
+def request(connection, identifier, method, params):
+    send_frame(connection, json.dumps(dict(id=identifier, method=method, params=params)).encode())
+    for _ in range(32):
+        result = message(connection)
+        if not isinstance(result, dict):
+            raise ProbeFailure('invalid-response')
+        if result.get('id') == identifier:
+            if 'error' in result:
+                raise ProbeFailure('rpc-rejected')
+            if 'result' not in result:
+                raise ProbeFailure('invalid-response')
+            return result['result']
+    raise ProbeFailure('notification-limit')
+
+
+def emit(stage, status, **details):
+    print(json.dumps(dict(stage=stage, status=status, **details), sort_keys=True), flush=True)
+
+
+def failure(error):
+    if isinstance(error, ProbeFailure):
+        return error.status
+    if isinstance(error, TimeoutError):
+        return 'timeout'
+    if isinstance(error, OSError):
+        return 'unavailable'
+    return 'invalid-response'
+
+
+def diagnose(root=Path('/')):
+    # Only fixed paths and booleans are emitted. No environment, command line,
+    # account identifiers, auth files, server messages or URLs are logged.
+    def path(value):
+        return root / value.lstrip('/')
+    try:
+        manifest = json.loads(path('/usr/local/share/codexpad/runtime.json').read_text())
+        valid = manifest.get('hasAppServer') is True and manifest.get('target') == 'aarch64-unknown-linux-musl'
+    except (OSError, ValueError):
+        valid = False
+    emit('runtime', 'present' if valid else 'invalid',
+         server_present=path('/usr/local/libexec/codexpad/codex-app-server').is_file(),
+         ca_bundle_present=path('/etc/ssl/certs/ca-certificates.crt').is_file())
+    emit('boot', 'started' if path('/run/openrc/softlevel').is_file() else 'not-started',
+         proc_mounted=path('/proc/self/stat').is_file())
+    emit('service', 'started' if path('/run/openrc/started/codexpad').exists() else 'not-started')
+    try:
+        pid = int(path('/run/codexpad-app-server.pid').read_text().strip())
+        running = pid > 0 and path(f'/proc/{pid}/stat').is_file()
+    except (OSError, ValueError):
+        running = False
+    emit('server', 'running' if running else 'pid-unavailable')
+    for endpoint in ('healthz', 'readyz'):
+        connection = http.client.HTTPConnection('127.0.0.1', 4500, timeout=5)
+        try:
+            connection.request('GET', '/' + endpoint)
+            status = connection.getresponse().status
+            emit(endpoint, 'ok' if status == 200 else 'not-ready', http_status=status)
+        except Exception as error:
+            emit(endpoint, failure(error))
+        finally:
+            connection.close()
+    stage = 'transport.websocket'
+    try:
+        with websocket() as connection:
+            emit(stage, 'ok')
+            stage = 'protocol.initialize'
+            request(connection, 1, 'initialize', dict(clientInfo=dict(name='codexpad-diagnose', version='1'),
+                                                    capabilities=dict(experimentalApi=True)))
+            send_frame(connection, b'{"method":"initialized"}')
+            emit(stage, 'ok')
+            stage = 'authentication.account.read'
+            result = request(connection, 2, 'account/read', dict(refreshToken=False))
+            if not isinstance(result, dict) or 'account' not in result:
+                raise ProbeFailure('invalid-response')
+            emit(stage, 'ok', authenticated=result['account'] is not None)
+    except Exception as error:
+        emit(stage, failure(error))
+
+
+if __name__ == '__main__':
+    diagnose()
