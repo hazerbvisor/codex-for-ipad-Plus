@@ -73,6 +73,8 @@ test -f "$root/etc/ssl/cert.pem" || test -f "$root/etc/ssl/certs/ca-certificates
 # The Alpine minirootfs may omit the inherited iSH runlevel setup.
 install -D -m 0755 "$project_root/runtime/usr/local/libexec/codexpad/boot" \
     "$root/usr/local/libexec/codexpad/boot"
+install -D -m 0755 "$project_root/runtime/usr/local/libexec/codexpad/diagnose" \
+    "$root/usr/local/libexec/codexpad/diagnose"
 if grep -qx '::sysinit:/sbin/openrc sysinit' "$root/etc/inittab"; then
     sed -i 's|^::sysinit:/sbin/openrc sysinit$|::sysinit:/usr/local/libexec/codexpad/boot|' "$root/etc/inittab"
 else
@@ -122,4 +124,7 @@ jq -n --arg ishRevision "$revision" --arg alpineRelease "$release" \
     '{schemaVersion: 1, ishRevision: $ishRevision, alpineRelease: $alpineRelease, target: $target, hasAppServer: $hasAppServer, codexRevision: (if $hasAppServer then $codexRevision else null end)}' \
     > "$root/usr/local/share/codexpad/runtime.json"
 tar --numeric-owner --owner=0 --group=0 -czf "$OUTPUT_ROOTFS" -C "$root" .
+if [[ -n "${CODEX_BINARY:-}" ]]; then
+    python3 "$project_root/scripts/verify-runtime-archive.py" "$OUTPUT_ROOTFS"
+fi
 sha256sum "$OUTPUT_ROOTFS" > "$OUTPUT_ROOTFS.sha256"

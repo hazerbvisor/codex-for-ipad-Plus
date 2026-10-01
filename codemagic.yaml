@@ -153,6 +153,7 @@ workflows:
           git submodule update --init --recursive upstream/ios-linuxkit
           python3 tests/codexpad/test_ios_staging.py
           python3 scripts/tests/test_arm64_halfword_lanes.py
+          python3 scripts/tests/test_arm64_pmull.py
           python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
           if xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj \
             -scheme iSH-ARM64 \
