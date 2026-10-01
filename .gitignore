@@ -29,3 +29,18 @@ artifacts/
 __pycache__/
 rootfs-staging/
 *.xcresult
+
+# Local credentials and signing material. Never commit these.
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.mobileprovision
+*.key
+*.pem
+Secrets.xcconfig
+private.xcconfig
+ExportOptions.plist
+.codex/
+auth.json
