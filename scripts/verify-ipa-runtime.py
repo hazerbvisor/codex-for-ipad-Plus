@@ -62,7 +62,11 @@ def verify(ipa, runtime):
         if info.get('UIMainStoryboardFile') != 'Terminal' or info.get('UILaunchStoryboardName') != 'LaunchScreen':
             raise ValueError('App storyboard metadata is missing')
         for storyboard in ('Terminal', 'LaunchScreen', 'About', 'Roots'):
-            if not any(name.startswith(APP + 'Base.lproj/' + storyboard + '.storyboardc/')
+            # Localized storyboards compile under Base.lproj; unlocalized ones
+            # (Roots in the pinned project) compile at the app bundle root.
+            prefixes = tuple(APP + directory + storyboard + '.storyboardc/'
+                             for directory in ('', 'Base.lproj/'))
+            if not any(name.startswith(prefixes)
                        and archive.getinfo(name).file_size for name in names):
                 raise ValueError(f'Missing compiled storyboard: {storyboard}')
         for bundled, source in (('upstreams.json', PROJECT / 'Dependencies/upstreams.json'),
