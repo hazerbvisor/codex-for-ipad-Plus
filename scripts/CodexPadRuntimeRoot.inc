@@ -1,4 +1,5 @@
 // Included in the staged Roots.m. fakefs stores regular-file data at data/<path>.
+#include "CodexPadRuntimeUpgrade.c"
 static BOOL CodexPadRootHasRuntime(NSURL *root) {
     NSURL *data = [root URLByAppendingPathComponent:@"data" isDirectory:YES];
     NSFileManager *manager = NSFileManager.defaultManager;
@@ -19,7 +20,35 @@ static BOOL CodexPadRootHasRuntime(NSURL *root) {
 }
 
 BOOL CodexPadPrepareRuntimeRoot(Roots *roots, NSError **error) {
-    if (CodexPadRootHasRuntime([roots rootUrl:roots.defaultRoot])) return YES;
+    NSData *pinsData = [NSData dataWithContentsOfURL:
+        [NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"upstreams.json"]];
+    id pinsObject = pinsData ? [NSJSONSerialization JSONObjectWithData:pinsData options:0 error:nil] : nil;
+    NSDictionary *pins = [pinsObject isKindOfClass:NSDictionary.class] ? pinsObject : nil;
+    id codex = [pins[@"codex"] isKindOfClass:NSDictionary.class] ? pins[@"codex"] : nil;
+    id release = [codex[@"codeModeHostRelease"] isKindOfClass:NSDictionary.class] ? codex[@"codeModeHostRelease"] : nil;
+    NSString *hash = [release[@"binarySha256"] isKindOfClass:NSString.class] ? release[@"binarySha256"] : nil;
+    NSURL *selected = [roots rootUrl:roots.defaultRoot];
+    if (CodexPadRootHasRuntime(selected)) {
+        // Upgrade the existing guest in place, retaining the selected root and
+        // all saved account state/projects. Only the missing helper is installed.
+        NSDictionary *installed = [NSJSONSerialization JSONObjectWithData:
+            [NSData dataWithContentsOfURL:[selected URLByAppendingPathComponent:@"data/usr/local/share/codexpad/runtime.json"]]
+            options:0 error:nil];
+        int status = EINVAL;
+        if ([installed[@"codexRevision"] isEqual:codex[@"revision"]] && hash) {
+            if (CodexPadRootHasCodeModeHost(selected.fileSystemRepresentation, hash.UTF8String)) return YES;
+            NSURL *archive = [NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"root.tar.gz"];
+            status = CodexPadInstallCodeModeHost(archive.fileSystemRepresentation, selected.fileSystemRepresentation,
+                                               hash.UTF8String);
+        }
+        if (status || !CodexPadRootHasCodeModeHost(selected.fileSystemRepresentation, hash.UTF8String)) {
+            if (error) *error = [NSError errorWithDomain:@"CodexPadRuntime" code:status ?: EIO
+                userInfo:@{NSLocalizedDescriptionKey: @"The Code Mode helper could not be installed into the existing runtime. Its Codex version must match the bundled release; existing files and credentials were retained."}];
+            return NO;
+        }
+        NSLog(@"CodexPad runtime Code Mode helper installed");
+        return YES;
+    }
     // Retain every existing root. Repair by importing a separate filesystem,
     // never by overwriting projects, credentials or the fakefs database.
     NSString *previous = roots.defaultRoot;
@@ -29,9 +58,10 @@ BOOL CodexPadPrepareRuntimeRoot(Roots *roots, NSError **error) {
     NSURL *archive = [NSBundle.mainBundle.bundleURL URLByAppendingPathComponent:@"root.tar.gz"];
     if (![NSFileManager.defaultManager fileExistsAtPath:archive.path] ||
         ![roots importRootFromArchive:archive name:name error:error progressReporter:nil]) return NO;
-    if (!CodexPadRootHasRuntime([roots rootUrl:name])) {
+    if (!CodexPadRootHasRuntime([roots rootUrl:name]) ||
+            !CodexPadRootHasCodeModeHost([roots rootUrl:name].fileSystemRepresentation, hash.UTF8String)) {
         if (error) *error = [NSError errorWithDomain:@"CodexPadRuntime" code:1
-            userInfo:@{NSLocalizedDescriptionKey: @"The bundled runtime imported without the Codex server or OpenRC files."}];
+            userInfo:@{NSLocalizedDescriptionKey: @"The bundled runtime imported without the Codex server, matching Code Mode helper or OpenRC files."}];
         return NO;
     }
     roots.defaultRoot = name;

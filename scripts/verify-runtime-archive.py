@@ -26,7 +26,7 @@ def verify(archive, codex, runtime):
             return root.extractfile(member).read()
 
         manifest = json.loads(read('usr/local/share/codexpad/runtime.json'))
-        expected = dict(schemaVersion=1, hasAppServer=True, codexRevision=codex['revision'],
+        expected = dict(schemaVersion=1, hasAppServer=True, hasCodeModeHost=True, codexRevision=codex['revision'],
                         ishRevision=runtime['revision'], target=codex['target'],
                         alpineRelease=runtime['alpineRelease'])
         if any(manifest.get(key) != value for key, value in expected.items()):
@@ -46,6 +46,22 @@ def verify(archive, codex, runtime):
                             binarySha256=checksum[0])
             if any(provenance.get(key) != value for key, value in expected.items()):
                 raise ValueError('Runtime official-release provenance differs')
+        helper = read('usr/local/libexec/codexpad/codex-code-mode-host', executable=True)
+        helper_hash = hashlib.sha256(helper).hexdigest()
+        if helper_hash != codex['codeModeHostRelease']['binarySha256']:
+            raise ValueError('Runtime Code Mode helper differs from the pinned official binary')
+        if helper[:6] != b'\x7fELF\x02\x01' or int.from_bytes(helper[18:20], 'little') != 183:
+            raise ValueError('Runtime Code Mode helper is not AArch64 ELF')
+        helper_checksum = read('usr/local/share/codexpad/codex-code-mode-host.sha256').decode().split()
+        if helper_checksum != [helper_hash, '/usr/local/libexec/codexpad/codex-code-mode-host']:
+            raise ValueError('Runtime Code Mode helper checksum differs')
+        helper_provenance = json.loads(read('usr/local/share/codexpad/codex-code-mode-host.provenance.json'))
+        expected = dict(source='official-release', repository=codex['repository'],
+                        revision=codex['revision'], target=codex['target'],
+                        tag=codex['release']['tag'], archiveSha256=codex['codeModeHostRelease']['sha256'],
+                        binarySha256=helper_hash)
+        if any(helper_provenance.get(key) != value for key, value in expected.items()):
+            raise ValueError('Runtime Code Mode helper provenance differs')
         for path in ('sbin/openrc', 'sbin/rc-service', 'usr/local/libexec/codexpad/boot',
                      'usr/local/libexec/codexpad/diagnose'):
             read(path, executable=True)
@@ -77,4 +93,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     verify(args.archive, json.loads((PROJECT / 'Dependencies/upstreams.json').read_text())['codex'],
            json.loads((PROJECT / 'Dependencies/arm64-runtime.json').read_text()))
-    print('PASS: runtime archive server, pins, checksums, service, boot, diagnostics and CA bundle')
+    print('PASS: runtime server and Code Mode helper, pins, checksums, service, boot and CA bundle')

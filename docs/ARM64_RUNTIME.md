@@ -80,7 +80,10 @@ with package dependencies; record its compressed size and reduce it only after
 the working set is validated. Supply the resulting archive to an **ARM64**
 Xcode target explicitly. Use the staged `iSH-ARM64` project.
 When adding `CODEX_BINARY`, also set `CODEX_SOURCE_DIR` to the exact pinned
-upstream checkout so the packaged licence and revision can be verified.
+upstream checkout so the packaged licence and revision can be verified, and
+`CODEX_CODE_MODE_HOST_BINARY` to the checksum-verified helper downloaded with
+`download-codex-arm64.py --component code-mode-host`. The helper's provenance
+file must accompany it. Both executables go into the same runtime archive.
 
 The supported Codemagic path uses `scripts/download-codex-arm64.py`; see
 [`CODEMAGIC_ARM64.md`](CODEMAGIC_ARM64.md) for the pinned release and verification.

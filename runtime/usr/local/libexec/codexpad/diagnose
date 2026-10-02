@@ -126,6 +126,8 @@ def diagnose(root=Path('/')):
     emit('runtime', 'present' if valid else 'invalid',
          server_present=path('/usr/local/libexec/codexpad/codex-app-server').is_file(),
          ca_bundle_present=path('/etc/ssl/certs/ca-certificates.crt').is_file())
+    helper = path('/usr/local/libexec/codexpad/codex-code-mode-host')
+    emit('runtime.code-mode-host', 'present' if helper.is_file() and os.access(helper, os.X_OK) else 'missing')
     emit('boot', 'started' if path('/run/openrc/softlevel').is_file() else 'not-started',
          proc_mounted=path('/proc/self/stat').is_file())
     emit('service', 'started' if path('/run/openrc/started/codexpad').exists() else 'not-started')
