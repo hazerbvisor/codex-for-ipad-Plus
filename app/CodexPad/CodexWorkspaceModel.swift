@@ -117,6 +117,8 @@ final class CodexWorkspaceModel: ObservableObject {
     private var didStart = false
     private var isConnecting = false
     private var engineConnectionTask: Task<Void, Never>?
+    private let engineRetryWindow: Duration
+    private let engineRetryDelay: (Int) -> Duration
     private var drafts: [String: String] = [:]
     private var selectionGeneration = 0
     private var directoryGeneration = 0
@@ -128,12 +130,18 @@ final class CodexWorkspaceModel: ObservableObject {
     init(
         rpc: (any CodexRPCServing)? = nil,
         demoMode: Bool = ProcessInfo.processInfo.arguments.contains("--codexpad-demo"),
-        preferences: UserDefaults? = nil
+        preferences: UserDefaults? = nil,
+        engineRetryWindow: Duration = .seconds(120),
+        engineRetryDelay: @escaping (Int) -> Duration = { attempt in
+            .milliseconds(Int64(min(2_000, 350 + attempt * 180)))
+        }
     ) {
         let preferences = preferences ?? (demoMode
             ? UserDefaults(suiteName: "CodexPad.Demo.\(UUID().uuidString)")!
             : .standard)
         self.preferences = preferences
+        self.engineRetryWindow = engineRetryWindow
+        self.engineRetryDelay = engineRetryDelay
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--codexpad-desktop-mode") {
             desktopModeEnabled = true
@@ -281,7 +289,13 @@ final class CodexWorkspaceModel: ObservableObject {
         enginePhase = .starting
         errorBanner = nil
         runtimeRevision = nil
-        for attempt in 1...10 {
+        // Allow for immediate connection refusals while the guest boots. Ten
+        // attempts previously exhausted startup in only about eleven seconds.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: engineRetryWindow)
+        var attempt = 0
+        while clock.now < deadline {
+            attempt += 1
             guard !Task.isCancelled else { rpc.disconnect(); return }
             enginePhase = .connecting(attempt: attempt)
             do {
@@ -308,8 +322,9 @@ final class CodexWorkspaceModel: ObservableObject {
                 return
             } catch {
                 appendRuntime("engine.connect.failed attempt=\(attempt) \(codexDiagnosticFailure(error))")
-                if attempt < 10 {
-                    do { try await Task.sleep(for: .milliseconds(Int64(350 + attempt * 180))) }
+                if clock.now < deadline {
+                    let remaining = max(Duration.zero, clock.now.duration(to: deadline))
+                    do { try await Task.sleep(for: min(engineRetryDelay(attempt), remaining)) }
                     catch { rpc.disconnect(); return }
                 }
             }

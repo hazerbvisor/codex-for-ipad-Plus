@@ -40,3 +40,4 @@ jobs:
             artifacts/engine-readiness/
             artifacts/xcodebuild-simulator.log
             artifacts/xcodebuild-arm64.log
+            artifacts/CodexPad-ARM64-unsigned.ipa

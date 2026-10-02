@@ -131,7 +131,12 @@ struct ModelRegression {
         await startup.cancelSignIn()
 
         let unavailableRPC = FakeRPC()
-        let unavailable = model(unavailableRPC)
+        let unavailable = CodexWorkspaceModel(
+            rpc: unavailableRPC, demoMode: false,
+            preferences: UserDefaults(suiteName: "CodexPad.Regression.\(UUID().uuidString)")!,
+            engineRetryWindow: .milliseconds(100)
+        )
+        let unavailableStarted = ContinuousClock.now
         unavailableRPC.connectHandler = { throw URLError(.cannotConnectToHost) }
         await unavailable.connectToLocalEngine()
         if case .offline(let message) = unavailable.enginePhase {
@@ -140,8 +145,31 @@ struct ModelRegression {
         } else {
             preconditionFailure("An unreachable engine must finish offline")
         }
-        check(unavailableRPC.connectionAttempts == 10 && unavailableRPC.calls.isEmpty,
+        check(unavailableRPC.connectionAttempts > 0 && unavailableRPC.calls.isEmpty &&
+              unavailableStarted.duration(to: ContinuousClock.now) < .seconds(2),
               "a failed startup is bounded and cannot issue login or credential requests")
+
+        let slowRPC = FakeRPC()
+        let slowStartup = CodexWorkspaceModel(
+            rpc: slowRPC, demoMode: false,
+            preferences: UserDefaults(suiteName: "CodexPad.Regression.\(UUID().uuidString)")!,
+            engineRetryDelay: { _ in .zero }
+        )
+        slowRPC.connectHandler = {
+            if slowRPC.connectionAttempts <= 14 { throw URLError(.cannotConnectToHost) }
+        }
+        slowRPC.handler = startupRPC.handler
+        await slowStartup.start()
+        check(slowStartup.enginePhase.isReady && slowRPC.connectionAttempts == 15,
+              "a slowly booting guest can initialize after the former ten-attempt limit")
+        check(slowStartup.runtimeRevision == CodexFeatureCatalog.upstreamRevision,
+              "extended startup still verifies the saved guest revision before readiness")
+        check(slowStartup.runtimeLog.filter { $0.contains("transport code=-1004") }.count == 14,
+              "warmup refusals retain their original numeric transport error")
+        await slowStartup.signInWithChatGPT()
+        check(slowStartup.pendingLoginID == "startup-login",
+              "sign-in becomes available when a slowly booting local engine becomes ready")
+        await slowStartup.cancelSignIn()
 
         let rpc = FakeRPC()
         let m = model(rpc)

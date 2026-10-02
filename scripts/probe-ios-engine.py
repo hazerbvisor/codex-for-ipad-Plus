@@ -57,7 +57,8 @@ def probe(app, output, expected_revision):
         report = wait_for_report(container / "Documents/CodexPadEngineSmoke.json",
                                  expected_revision)
         (output / "engine-readiness.json").write_text(json.dumps(report, indent=2) + "\n")
-        print("PASS: real iPad simulator app initialized Codex and verified the packaged guest revision")
+        print("Engine readiness: " + json.dumps(report, sort_keys=True), flush=True)
+        print("PASS: real iPad simulator app initialized Codex and verified the packaged guest revision", flush=True)
     finally:
         # Only this newly-created disposable simulator is cleaned up.
         # No existing device, root, credential, or build cache is touched.
