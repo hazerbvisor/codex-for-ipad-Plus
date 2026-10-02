@@ -47,6 +47,9 @@ jobs:
           export PATH="$(brew --prefix lld)/bin:$(brew --prefix llvm)/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
           export CODEXPAD_ROOTFS_PATH="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
           python3 -m py_compile scripts/probe-ios-engine.py
+          python3 tests/codexpad/test_poll_timeouts.py
+          python3 tests/codexpad/test_runtime_upgrade.py
+          python3 tests/codexpad/test_ios_staging.py
           python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
           xcodebuild -quiet -project artifacts/staged-arm64-ios/iSH.xcodeproj \
             -scheme iSH-ARM64 -configuration Release -sdk iphonesimulator \

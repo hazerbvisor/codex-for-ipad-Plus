@@ -57,6 +57,29 @@ def repair_pmull_aliasing(source: str) -> str:
         "    } else if (size == 3) {")
 
 
+def repair_poll_timeouts(source: str) -> str:
+    # Rust checks standard-fd validity with poll(events=0, timeout=0).
+    # Darwin can keep waking on an existing regular log file even though
+    # those readiness bits are outside the guest mask. Enforce a monotonic
+    # deadline after each readiness scan, including a zero timeout.
+    source = replace_one(source,
+        "    // TODO this is pretty broken with regards to timeouts\n    int res = 0;\n",
+        "    // Host readiness can be filtered out by the guest event mask. A fixed\n    // deadline must still expire when kqueue keeps reporting such events.\n    struct timespec deadline = {0};\n    if (timeout != NULL) {\n        clock_gettime(CLOCK_MONOTONIC, &deadline);\n        deadline.tv_sec += timeout->tv_sec;\n        deadline.tv_nsec += timeout->tv_nsec;\n        if (deadline.tv_nsec >= 1000000000L) {\n            deadline.tv_sec++;\n            deadline.tv_nsec -= 1000000000L;\n        }\n    }\n    int res = 0;\n")
+    source = replace_one(source,
+        "        // wait for a ready notification\n",
+        "        struct timespec remaining = {0};\n        if (timeout != NULL) {\n            struct timespec now;\n            clock_gettime(CLOCK_MONOTONIC, &now);\n            remaining.tv_sec = deadline.tv_sec - now.tv_sec;\n            remaining.tv_nsec = deadline.tv_nsec - now.tv_nsec;\n            if (remaining.tv_nsec < 0) {\n                remaining.tv_sec--;\n                remaining.tv_nsec += 1000000000L;\n            }\n            // Includes timeout == 0: scan guest readiness once, then return.\n            // Rust polls standard fds with events == 0 during startup.\n            if (remaining.tv_sec < 0 ||\n                    (remaining.tv_sec == 0 && remaining.tv_nsec == 0))\n                break;\n        }\n\n        // wait for a ready notification\n")
+    source = replace_one(source,
+        "        } else if (timeout->tv_sec >= 1) {",
+        "        } else if (remaining.tv_sec >= 1) {")
+    source = replace_one(source,
+        "            wait_timeout = timeout; // Short/zero timeouts pass through",
+        "            wait_timeout = &remaining; // Short deadlines pass through")
+    source = replace_one(source,
+        "            if (timeout != NULL) {\n                // Timed wait: subtract elapsed time\n                timeout->tv_sec -= 1;\n                if (timeout->tv_sec < 0) {\n                    // Original timeout expired\n                    break;\n                }\n            }\n",
+        "")
+    return source
+
+
 def object_definition(project: str, object_id: str) -> re.Match:
     # Build-phase IDs first occur as references inside PBXNativeTarget.
     # Match their actual definitions, never the first textual occurrence.
@@ -95,6 +118,8 @@ def stage(destination: Path) -> None:
 
     shutil.copytree(FORK, destination, symlinks=True,
                     ignore=shutil.ignore_patterns(".git", "build-arm64-linux*", ".cache"))
+    poll_path = destination / "fs/poll.c"
+    poll_path.write_text(repair_poll_timeouts(poll_path.read_text()))
     decoder = destination / "asbestos/guest-arm64/gen.c"
     decoder.write_text(repair_halfword_lanes(decoder.read_text()))
     crypto = destination / "asbestos/guest-arm64/crypto_helpers.c"
