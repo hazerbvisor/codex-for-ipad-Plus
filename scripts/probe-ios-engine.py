@@ -48,6 +48,7 @@ def probe(app, output, expected_revision):
     device = run("xcrun", "simctl", "create", "CodexPad engine readiness",
                  device_type["identifier"], runtime()).strip()
     app_pid = None
+    container = None
     launched_at = time.time()
     try:
         run("xcrun", "simctl", "boot", device)
@@ -75,6 +76,17 @@ def probe(app, output, expected_revision):
         print("PASS: three real iPad app launches initialized Codex and verified the saved guest revision",
               flush=True)
     except Exception:
+        if container:
+            for server_log in container.rglob("app-server.log"):
+                content = server_log.read_text(errors="replace")
+                (output / "guest-app-server.log").write_text(content)
+                print("Guest app-server log:\n" + content[-30000:], flush=True)
+        if app_pid:
+            descriptors = subprocess.run(["/usr/sbin/lsof", "-nP", "-p", app_pid],
+                                         text=True, capture_output=True, timeout=30)
+            (output / "app-descriptors.txt").write_text(descriptors.stdout + descriptors.stderr)
+            print("App descriptors:\n" + descriptors.stdout[-35000:] + descriptors.stderr,
+                  flush=True)
         if app_pid:
             sampled = subprocess.run(["/usr/bin/sample", app_pid, "3", "1"],
                                      text=True, capture_output=True, timeout=30)
