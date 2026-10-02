@@ -38,9 +38,13 @@ class RuntimeArchiveTests(unittest.TestCase):
             'usr/local/libexec/codexpad/diagnose': b'fixture',
             'etc/profile.d/codexpad.sh': b'fixture',
             'etc/init.d/codexpad': (PROJECT / 'runtime/etc/init.d/codexpad').read_bytes(),
-            'etc/inittab': b'::sysinit:/usr/local/libexec/codexpad/boot\n',
+            'etc/inittab': b'::sysinit:/usr/local/libexec/codexpad/boot\n::wait:/sbin/openrc default\n',
             'etc/ssl/certs/ca-certificates.crt': certificate,
         }
+        self.files.update({path: binary for path in check.GUEST_PROGRAMS})
+        self.files.update({f'usr/lib/python3/{module}': b'module fixture'
+                           for module in ('os.py', 'ssl.py', 'subprocess.py', 'json/__init__.py')})
+        self.links = {}
         self.runlevel = '/etc/init.d/codexpad'
         helper_hash = hashlib.sha256(binary).hexdigest()
         self.codex['codeModeHostRelease']['binarySha256'] = helper_hash
@@ -65,6 +69,10 @@ class RuntimeArchiveTests(unittest.TestCase):
             member = tarfile.TarInfo('./etc/ssl/cert.pem')
             member.type, member.linkname = tarfile.SYMTYPE, 'certs/ca-certificates.crt'
             root.addfile(member)
+            for name, target in self.links.items():
+                member = tarfile.TarInfo('./' + name)
+                member.type, member.linkname = tarfile.SYMTYPE, target
+                root.addfile(member)
 
     def verify(self):
         self.package()
@@ -91,6 +99,35 @@ class RuntimeArchiveTests(unittest.TestCase):
         provenance = json.loads(self.files[path]); provenance['tag'] = 'rust-v0.1.0'
         self.files[path] = json.dumps(provenance).encode()
         with self.assertRaisesRegex(ValueError, 'helper provenance'): self.verify()
+
+    def test_missing_guest_tools_and_stdlib_are_rejected(self):
+        for path in (*check.GUEST_PROGRAMS, 'usr/lib/python3/ssl.py'):
+            with self.subTest(path=path):
+                data = self.files.pop(path)
+                with self.assertRaises(ValueError):
+                    self.verify()
+                self.files[path] = data
+
+    def test_shell_link_resolves_inside_guest(self):
+        self.files['bin/busybox'] = self.files.pop('bin/sh')
+        self.links['bin/sh'] = '/bin/busybox'
+        self.verify()
+        self.links['bin/sh'] = '/missing/busybox'
+        with self.assertRaisesRegex(ValueError, 'guest link'):
+            self.verify()
+        self.links['bin/sh'] = 'sh'
+        with self.assertRaisesRegex(ValueError, 'cyclic'):
+            self.verify()
+
+    def test_init_must_start_default_runlevel(self):
+        self.files['etc/inittab'] = b'::sysinit:/usr/local/libexec/codexpad/boot\n'
+        with self.assertRaisesRegex(ValueError, 'default service runlevel'):
+            self.verify()
+
+    def test_wrong_guest_architecture_is_rejected(self):
+        self.files['usr/bin/git'] = b'\x7fELF\x02\x01' + bytes(12) + (62).to_bytes(2, 'little')
+        with self.assertRaisesRegex(ValueError, 'Guest program is not AArch64'):
+            self.verify()
 
     def test_corrupt_server(self):
         self.files['usr/local/libexec/codexpad/codex-app-server'] += b'corrupted'

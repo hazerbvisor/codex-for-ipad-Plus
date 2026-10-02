@@ -108,6 +108,13 @@ class StagingTests(unittest.TestCase):
             pbx = (output / 'iSH.xcodeproj/project.pbxproj').read_text()
             sources = staging.phase_files(pbx, SOURCE, 'PBXSourcesBuildPhase').group(1)
             resources = staging.phase_files(pbx, RESOURCE, 'PBXResourcesBuildPhase').group(1)
+            fork_info = plistlib.loads((staging.FORK / 'app/Info.plist').read_bytes())
+            staged_info = plistlib.loads((output / 'app/Info.plist').read_bytes())
+            self.assertEqual(staged_info['UIAppFonts'], fork_info['UIAppFonts'])
+            for font in staged_info.pop('UIAppFonts'):
+                self.assertIn(font + ' in Resources', resources)
+                self.assertTrue(list((output / 'app').rglob(font)), font)
+            self.assertEqual(staged_info, plistlib.loads((PROJECT / 'app/Info.plist').read_bytes()))
             for source in staging.SWIFT_FILES:
                 self.assertEqual(sources.count(source.name + ' in Sources'), 1)
                 self.assertNotIn(source.name, resources)
