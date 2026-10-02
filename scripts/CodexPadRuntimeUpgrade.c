@@ -107,7 +107,7 @@ static int CodexPadInstallCodeModeHost(const char *archivePath, const char *root
     while ((status = archive_read_next_header(archive, &entry)) == ARCHIVE_OK) {
         const char *name = archive_entry_pathname(entry);
         if (strncmp(name, "./", 2) == 0) name += 2;
-        if (strcmp(name, CODEXPAD_HOST_PATH + 1) != 0) continue;
+        if (strcmp(name, &CODEXPAD_HOST_PATH[1]) != 0) continue;
         if (found++ || archive_entry_filetype(entry) != AE_IFREG || archive_entry_hardlink(entry) ||
                 archive_entry_symlink(entry) || archive_entry_size(entry) < 64 ||
                 !(archive_entry_perm(entry) & 0100)) goto cleanup;
