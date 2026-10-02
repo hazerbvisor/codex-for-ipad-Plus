@@ -47,11 +47,16 @@ def probe(app, output, expected_revision):
     device_type = next((row for row in ipads if row["name"] == "iPad Pro (11-inch) (M4)"), ipads[0])
     device = run("xcrun", "simctl", "create", "CodexPad engine readiness",
                  device_type["identifier"], runtime()).strip()
+    app_pid = None
+    launched_at = time.time()
     try:
         run("xcrun", "simctl", "boot", device)
         run("xcrun", "simctl", "bootstatus", device, "-b", timeout=300)
         run("xcrun", "simctl", "install", device, str(app.resolve()))
-        run("xcrun", "simctl", "launch", device, identifier, "--codexpad-engine-smoke")
+        launched = run("xcrun", "simctl", "launch", device, identifier, "--codexpad-engine-smoke")
+        app_pid = launched.rsplit(":", 1)[-1].strip()
+        if not app_pid.isdigit():
+            raise RuntimeError("Simulator launch did not return an app PID")
         container = Path(run("xcrun", "simctl", "get_app_container",
                              device, identifier, "data").strip())
         report = wait_for_report(container / "Documents/CodexPadEngineSmoke.json",
@@ -59,18 +64,41 @@ def probe(app, output, expected_revision):
         (output / "engine-readiness.json").write_text(json.dumps(report, indent=2) + "\n")
         print("Engine readiness: " + json.dumps(report, sort_keys=True), flush=True)
         print("PASS: real iPad simulator app initialized Codex and verified the packaged guest revision", flush=True)
+    except Exception:
+        if app_pid:
+            sampled = subprocess.run(["/usr/bin/sample", app_pid, "3", "1"],
+                                     text=True, capture_output=True, timeout=30)
+            (output / "app-thread-sample.txt").write_text(sampled.stdout + sampled.stderr)
+            print("App thread sample:\n" + sampled.stdout[-30000:] + sampled.stderr, flush=True)
+        crash_dir = Path.home() / "Library/Logs/DiagnosticReports"
+        for crash in crash_dir.glob("CodexPad*.ips"):
+            if crash.stat().st_mtime < launched_at:
+                continue
+            content = crash.read_text()
+            decoder = json.JSONDecoder()
+            _, offset = decoder.raw_decode(content)
+            record = json.loads(content[offset:])
+            threads = record.get("threads", [])
+            selected = [thread for index, thread in enumerate(threads)
+                        if index == 0 or thread.get("triggered")]
+            summary = {key: record.get(key) for key in ("exception", "termination", "faultingThread")}
+            summary["threads"] = selected
+            (output / (crash.stem + "-summary.json")).write_text(json.dumps(summary, indent=2))
+            print("App crash summary: " + json.dumps(summary), flush=True)
+        raise
     finally:
         # Only this newly-created disposable simulator is cleaned up.
         # No existing device, root, credential, or build cache is touched.
         try:
             logs = subprocess.run(["xcrun", "simctl", "spawn", device, "log", "show",
                                    "--style", "compact", "--last", "5m",
-                                   "--predicate", 'process == "CodexPad"'],
+                                   "--predicate", 'process == "CodexPad" OR eventMessage CONTAINS "com.joshuasyson.CodexPad.arm64"'],
                                   text=True, capture_output=True, timeout=60)
             (output / "simulator-engine.log").write_text(logs.stdout)
             for line in logs.stdout.splitlines():
                 if any(marker in line for marker in ("booting guest init", "runtime preparation failed",
-                                                     "mount aborted", "guest process pid")):
+                                                     "mount aborted", "guest process pid", "watchdog", "crash",
+                                                     "termination", "scene-create", "service exited")):
                     print(line)
         finally:
             subprocess.run(["xcrun", "simctl", "shutdown", device], capture_output=True, timeout=60)

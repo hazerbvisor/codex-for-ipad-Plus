@@ -1,4 +1,4 @@
-name: Inspect captured engine startup
+name: Replay packaged engine startup
 on:
   push:
     branches: ["fix/engine-runtime-diagnostics"]
@@ -6,30 +6,61 @@ permissions:
   actions: read
   contents: read
 jobs:
-  diagnostics:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  replay:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      CM_BUILD_DIR: ${{ github.workspace }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          submodules: recursive
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: Packaged-engine-readiness
           run-id: 37036121023
           github-token: ${{ github.token }}
           path: /tmp/codexpad-captured-engine
-      - name: Read captured startup diagnostics
+      - name: Prepare tools and reuse the exact verified guest from the failed IPA
+        shell: bash
         run: |
-          python3 - <<'PY'
+          set -euo pipefail
+          python3 -m venv /tmp/codexpad-replay-parser
+          /tmp/codexpad-replay-parser/bin/pip install PyYAML==6.0.2
+          /tmp/codexpad-replay-parser/bin/python - <<'PY'
           from pathlib import Path
-          import re
-          root = Path("/tmp/codexpad-captured-engine")
-          print("Captured files:", [str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()])
-          path = root / "engine-readiness/simulator-engine.log"
-          lines = path.read_text().splitlines()
-          print("Startup log lines:", len(lines))
-          pattern = re.compile(r"error|fault|exception|crash|fatal|watchdog|boot|exit|failed|assert|panic|terminate|kill|Code Mode", re.I)
-          relevant = [line for line in lines if pattern.search(line)]
-          print("Relevant startup diagnostics:")
-          print("\n".join(relevant[-200:]))
-          print("Final startup log context:")
-          print("\n".join(lines[-80:]))
+          import subprocess, yaml, zipfile, hashlib
+          workflow = yaml.safe_load(Path("codemagic.yaml").read_text())["workflows"]["arm64-ipad-all-in-one"]
+          subprocess.run(["/bin/bash", "-euo", "pipefail", "-c", workflow["scripts"][0]["script"]], check=True)
+          with zipfile.ZipFile("/tmp/codexpad-captured-engine/CodexPad-ARM64-unsigned.ipa") as archive:
+              guest = archive.read("Payload/CodexPad.app/root.tar.gz")
+          Path("artifacts").mkdir(exist_ok=True)
+          Path("artifacts/codexpad-runtime-arm64.tar.gz").write_bytes(guest)
+          print("Reusing verified guest SHA256:", hashlib.sha256(guest).hexdigest())
           PY
+      - name: Replay the real iPad engine and capture any startup stall
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix lld)/bin:$(brew --prefix llvm)/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+          export CODEXPAD_ROOTFS_PATH="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
+          python3 -m py_compile scripts/probe-ios-engine.py
+          python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
+          xcodebuild -quiet -project artifacts/staged-arm64-ios/iSH.xcodeproj \
+            -scheme iSH-ARM64 -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$CM_BUILD_DIR/artifacts/derived-arm64-simulator" \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_ENTITLEMENTS= build 2>&1 | tee artifacts/xcodebuild-simulator.log
+          simulator_app="$CM_BUILD_DIR/artifacts/derived-arm64-simulator/Build/Products/Release-iphonesimulator/CodexPad.app"
+          codesign --force --sign - "$simulator_app"
+          python3 scripts/probe-ios-engine.py --app "$simulator_app" --output artifacts/engine-readiness
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: Replayed-engine-startup
+          path: |
+            artifacts/engine-readiness/
+            artifacts/xcodebuild-simulator.log
