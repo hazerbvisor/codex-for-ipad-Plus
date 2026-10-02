@@ -4,10 +4,14 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import posixpath
 import ssl
 import tarfile
 
 PROJECT = Path(__file__).resolve().parents[1]
+GUEST_PROGRAMS = ('bin/sh', 'sbin/init', 'bin/bash', 'usr/bin/python3',
+                  'usr/bin/git', 'usr/bin/rg', 'usr/bin/curl',
+                  'usr/libexec/git-core/git-remote-https', 'lib/ld-musl-aarch64.so.1')
 
 
 def verify(archive, codex, runtime):
@@ -24,6 +28,20 @@ def verify(archive, codex, runtime):
             if not member or not member.isfile() or (executable and member.mode & 0o111 != 0o111):
                 raise ValueError(f'Missing or invalid runtime file: {path}')
             return root.extractfile(member).read()
+
+        def resolve(path):
+            seen = set()
+            while path not in seen:
+                seen.add(path)
+                member = entries.get(path)
+                if not member:
+                    break
+                if not (member.issym() or member.islnk()):
+                    return path
+                # Tar hard links are archive-relative; symlinks are guest-relative.
+                parent = posixpath.dirname(path) if member.issym() else ''
+                path = posixpath.normpath(posixpath.join(parent, member.linkname)).lstrip('/')
+            raise ValueError(f'Missing or cyclic guest link: {path}')
 
         manifest = json.loads(read('usr/local/share/codexpad/runtime.json'))
         expected = dict(schemaVersion=1, hasAppServer=True, codexRevision=codex['revision'],
@@ -46,6 +64,18 @@ def verify(archive, codex, runtime):
                             binarySha256=checksum[0])
             if any(provenance.get(key) != value for key, value in expected.items()):
                 raise ValueError('Runtime official-release provenance differs')
+        for path in GUEST_PROGRAMS:
+            target = resolve(path)
+            # The service and interactive guest run as root; base image tools
+            # can legitimately be owner-executable without all three x bits.
+            if not entries[target].mode & 0o100:
+                raise ValueError(f'Guest program is not executable: {path}')
+            program = read(target)
+            if program[:6] != b'\x7fELF\x02\x01' or int.from_bytes(program[18:20], 'little') != 183:
+                raise ValueError(f'Guest program is not AArch64 ELF: {path}')
+        python = resolve('usr/bin/python3').rsplit('/', 1)[1]
+        for module in ('os.py', 'ssl.py', 'subprocess.py', 'json/__init__.py'):
+            read(f'usr/lib/{python}/{module}')
         for path in ('sbin/openrc', 'sbin/rc-service', 'usr/local/libexec/codexpad/boot',
                      'usr/local/libexec/codexpad/diagnose'):
             read(path, executable=True)
@@ -59,6 +89,8 @@ def verify(archive, codex, runtime):
             raise ValueError('Runtime service is not enabled in the default runlevel')
         if '::sysinit:/usr/local/libexec/codexpad/boot' not in read('etc/inittab').decode().splitlines():
             raise ValueError('Runtime init does not run the boot adapter')
+        if '::wait:/sbin/openrc default' not in read('etc/inittab').decode().splitlines():
+            raise ValueError('Runtime init does not start the default service runlevel')
         certificates = read('etc/ssl/certs/ca-certificates.crt').decode('ascii')
         default_certificates = entries.get('etc/ssl/cert.pem')
         if (not default_certificates or not default_certificates.issym() or
@@ -77,4 +109,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     verify(args.archive, json.loads((PROJECT / 'Dependencies/upstreams.json').read_text())['codex'],
            json.loads((PROJECT / 'Dependencies/arm64-runtime.json').read_text()))
-    print('PASS: runtime archive server, pins, checksums, service, boot, diagnostics and CA bundle')
+    print('PASS: runtime server, pins, checksums, guest tools, Python, service, boot and CA bundle')

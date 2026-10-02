@@ -91,6 +91,7 @@ workflows:
           python3 tests/codexpad/test_build_failure_summary.py
           python3 tests/codexpad/test_imported_runtime.py
           python3 tests/codexpad/test_ipa_runtime.py
+          python3 tests/codexpad/test_runtime_archive.py
           model_bundle=/tmp/CodexPadModelRegression.app/Contents
           mkdir -p "$model_bundle/MacOS" "$model_bundle/Resources"
           cp app/CodexPad/CodexClientRequest.schema.json "$model_bundle/Resources/"
