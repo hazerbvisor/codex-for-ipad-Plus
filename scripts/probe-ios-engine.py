@@ -53,23 +53,33 @@ def probe(app, output, expected_revision):
         run("xcrun", "simctl", "boot", device)
         run("xcrun", "simctl", "bootstatus", device, "-b", timeout=300)
         run("xcrun", "simctl", "install", device, str(app.resolve()))
-        launched = run("xcrun", "simctl", "launch", device, identifier, "--codexpad-engine-smoke")
-        app_pid = launched.rsplit(":", 1)[-1].strip()
-        if not app_pid.isdigit():
-            raise RuntimeError("Simulator launch did not return an app PID")
-        container = Path(run("xcrun", "simctl", "get_app_container",
-                             device, identifier, "data").strip())
-        report = wait_for_report(container / "Documents/CodexPadEngineSmoke.json",
-                                 expected_revision)
+        container = None
+        for launch_index in range(3):
+            if container is not None:
+                run("xcrun", "simctl", "terminate", device, identifier)
+                # Remove only the report this disposable test app just wrote.
+                (container / "Documents/CodexPadEngineSmoke.json").unlink(missing_ok=True)
+            launched = run("xcrun", "simctl", "launch", device, identifier, "--codexpad-engine-smoke")
+            app_pid = launched.rsplit(":", 1)[-1].strip()
+            if not app_pid.isdigit():
+                raise RuntimeError("Simulator launch did not return an app PID")
+            container = Path(run("xcrun", "simctl", "get_app_container",
+                                 device, identifier, "data").strip())
+            report = wait_for_report(container / "Documents/CodexPadEngineSmoke.json",
+                                     expected_revision)
+            (output / ("engine-readiness-%d.json" % (launch_index + 1))).write_text(
+                json.dumps(report, indent=2) + "\n")
+            print("Engine readiness launch %d: " % (launch_index + 1) +
+                  json.dumps(report, sort_keys=True), flush=True)
         (output / "engine-readiness.json").write_text(json.dumps(report, indent=2) + "\n")
-        print("Engine readiness: " + json.dumps(report, sort_keys=True), flush=True)
-        print("PASS: real iPad simulator app initialized Codex and verified the packaged guest revision", flush=True)
+        print("PASS: three real iPad app launches initialized Codex and verified the saved guest revision",
+              flush=True)
     except Exception:
         if app_pid:
             sampled = subprocess.run(["/usr/bin/sample", app_pid, "3", "1"],
                                      text=True, capture_output=True, timeout=30)
             (output / "app-thread-sample.txt").write_text(sampled.stdout + sampled.stderr)
-            print("App thread sample:\n" + sampled.stdout[-30000:] + sampled.stderr, flush=True)
+            print("App thread sample:\n" + sampled.stdout[:30000] + sampled.stderr, flush=True)
         crash_dir = Path.home() / "Library/Logs/DiagnosticReports"
         for crash in crash_dir.glob("CodexPad*.ips"):
             if crash.stat().st_mtime < launched_at:
@@ -83,6 +93,8 @@ def probe(app, output, expected_revision):
                         if index == 0 or thread.get("triggered")]
             summary = {key: record.get(key) for key in ("exception", "termination", "faultingThread")}
             summary["threads"] = selected
+            summary["images"] = [{key: image.get(key) for key in ("name", "base", "uuid")}
+                                 for image in record.get("usedImages", [])]
             (output / (crash.stem + "-summary.json")).write_text(json.dumps(summary, indent=2))
             print("App crash summary: " + json.dumps(summary), flush=True)
         raise
