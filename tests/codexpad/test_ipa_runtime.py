@@ -47,13 +47,39 @@ class IPARuntimeTests(unittest.TestCase):
                    (check.APP + 'CodexPad', struct.pack('<8I', 0xfeedfacf, 0x0100000c,
                                                        0, 2, 0, 0, 0, 0))]
         entries += [(check.APP + name, b'resource fixture') for name in check.RESOURCES]
-        entries += [(check.APP + 'Base.lproj/' + name + '.storyboardc/Info.plist',
+        # Match the pinned Xcode project: Roots is not a localized variant group.
+        entries += [(check.APP + directory + name + '.storyboardc/Info.plist',
                      b'compiled storyboard fixture')
-                    for name in ('Terminal', 'LaunchScreen', 'About', 'Roots')]
+                    for directory, name in (('Base.lproj/', 'Terminal'),
+                                            ('Base.lproj/', 'LaunchScreen'),
+                                            ('Base.lproj/', 'About'), ('', 'Roots'))]
         entries += [(check.APP + 'upstreams.json', (PROJECT / 'Dependencies/upstreams.json').read_bytes()),
                     (check.APP + 'CodexClientRequest.schema.json',
                      (PROJECT / 'app/CodexPad/CodexClientRequest.schema.json').read_bytes())]
         return entries
+
+    def test_localized_roots_storyboard_is_accepted(self):
+        self.package([(name.replace('CodexPad.app/Roots.storyboardc/',
+                                    'CodexPad.app/Base.lproj/Roots.storyboardc/'), data)
+                      for name, data in self.complete_app()])
+        check.verify(self.ipa, self.runtime)
+
+    def test_empty_compiled_roots_storyboard_is_rejected(self):
+        entries = [(name, data) for name, data in self.complete_app()
+                   if not name.startswith(check.APP + 'Roots.storyboardc/')]
+        for directory in ('', 'Base.lproj/'):
+            with self.subTest(directory=directory):
+                prefix = check.APP + directory + 'Roots.storyboardc/'
+                self.package(entries + [(prefix, b''), (prefix + 'Info.plist', b'')])
+                with self.assertRaisesRegex(ValueError, 'Missing compiled storyboard: Roots'):
+                    check.verify(self.ipa, self.runtime)
+
+    def test_roots_storyboard_in_nested_bundle_is_rejected(self):
+        self.package([(name.replace('CodexPad.app/Roots.storyboardc/',
+                                    'CodexPad.app/Other.bundle/Roots.storyboardc/'), data)
+                      for name, data in self.complete_app()])
+        with self.assertRaisesRegex(ValueError, 'Missing compiled storyboard: Roots'):
+            check.verify(self.ipa, self.runtime)
 
     def test_runtime_only_ipa_is_rejected(self):
         self.package([(check.ROOT, self.runtime.read_bytes())])
