@@ -116,6 +116,7 @@ final class CodexWorkspaceModel: ObservableObject {
     private let preferences: UserDefaults
     private var didStart = false
     private var isConnecting = false
+    private var engineConnectionTask: Task<Void, Never>?
     private var drafts: [String: String] = [:]
     private var selectionGeneration = 0
     private var directoryGeneration = 0
@@ -254,6 +255,23 @@ final class CodexWorkspaceModel: ObservableObject {
     }
 
     func connectToLocalEngine() async {
+        if let task = engineConnectionTask {
+            await task.value
+            return
+        }
+        // The guest belongs to the model, not to a SwiftUI view's task.
+        // Awaiting this unstructured task does not pass caller cancellation
+        // into startup when layout changes or the workspace is replaced.
+        let task = Task { [weak self] in
+            guard let self else { return }
+            defer { self.engineConnectionTask = nil }
+            await self.performEngineConnection()
+        }
+        engineConnectionTask = task
+        await task.value
+    }
+
+    private func performEngineConnection() async {
         guard !isConnecting else { return }
         isConnecting = true
         defer { isConnecting = false }
@@ -292,9 +310,9 @@ final class CodexWorkspaceModel: ObservableObject {
                 }
             }
         }
-        enginePhase = .offline(
-            message: "The local Codex service did not become ready. Open Terminal to inspect the guest runtime."
-        )
+        let message = "The local Codex service did not become ready. Open Terminal to inspect the guest runtime."
+        enginePhase = .offline(message: message)
+        errorBanner = message
     }
 
     private func verifyRuntimeRevision() async throws {

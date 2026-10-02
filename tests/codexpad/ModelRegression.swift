@@ -7,7 +7,14 @@ final class FakeRPC: CodexRPCServing {
     var calls: [(String, JSONValue?)] = []
     var responses: [JSONValue] = []
     var handler: ((String, JSONValue?) async throws -> JSONValue)?
-    func connect() async throws { stateHandler?(.connected) }
+    var connectHandler: (() async throws -> Void)?
+    var connectionAttempts = 0
+    func connect() async throws {
+        connectionAttempts += 1
+        try await connectHandler?()
+        try Task.checkCancellation()
+        stateHandler?(.connected)
+    }
     func disconnect() { stateHandler?(.disconnected) }
     func request(method: String, params: JSONValue?) async throws -> JSONValue {
         calls.append((method, params))
@@ -79,6 +86,63 @@ struct ModelRegression {
         versionRPC.handler = { _, _ in .object([:]) }
         await versionModel.connectToLocalEngine()
         check(!versionModel.enginePhase.isReady && versionModel.runtimeRevision == nil, "missing runtime metadata fails closed")
+        let startupRPC = FakeRPC()
+        let startup = model(startupRPC)
+        let startupGate = Gate()
+        startupRPC.connectHandler = { _ = await startupGate.response() }
+        startupRPC.handler = { method, _ in
+            if method == "fs/readFile" {
+                let data = try JSONEncoder().encode(JSONValue.object([
+                    "codexRevision": .string(CodexFeatureCatalog.upstreamRevision!)
+                ]))
+                return .object(["dataBase64": .string(data.base64EncodedString())])
+            }
+            if method == "account/login/start" {
+                return .object(["type": .string("chatgpt"),
+                                "loginId": .string("startup-login"),
+                                "authUrl": .string("https://auth.openai.com/authorize")])
+            }
+            if method == "account/read" { return .object(["account": .null]) }
+            return .object(["data": .array([])])
+        }
+        let viewStartup = Task { await startup.start() }
+        await until { startupGate.continuation != nil }
+        viewStartup.cancel() // SwiftUI can cancel its task when view identity changes.
+        var reconnectStarted = false
+        var reconnectFinished = false
+        let reconnectDuringStartup = Task {
+            reconnectStarted = true
+            await startup.retryConnection()
+            reconnectFinished = true
+        }
+        await until { reconnectStarted }
+        check(!reconnectFinished && startupRPC.connectionAttempts == 1,
+              "reconnect during startup waits for the existing connection attempt")
+        startupGate.release(.null)
+        await viewStartup.value
+        await reconnectDuringStartup.value
+        check(startup.enginePhase.isReady && startup.runtimeRevision == CodexFeatureCatalog.upstreamRevision,
+              "cancelling the workspace task cannot strand model-owned engine startup")
+        check(startupRPC.connectionAttempts == 1,
+              "a cancelled startup caller and reconnect cannot create competing sockets")
+        await startup.signInWithChatGPT()
+        check(startup.pendingLoginID == "startup-login" && startup.loginURL?.host == "auth.openai.com",
+              "sign-in becomes available after startup survives workspace cancellation")
+        await startup.cancelSignIn()
+
+        let unavailableRPC = FakeRPC()
+        let unavailable = model(unavailableRPC)
+        unavailableRPC.connectHandler = { throw URLError(.cannotConnectToHost) }
+        await unavailable.connectToLocalEngine()
+        if case .offline(let message) = unavailable.enginePhase {
+            check(unavailable.errorBanner == message,
+                  "exhausted engine retries show an actionable error in Account settings")
+        } else {
+            preconditionFailure("An unreachable engine must finish offline")
+        }
+        check(unavailableRPC.connectionAttempts == 10 && unavailableRPC.calls.isEmpty,
+              "a failed startup is bounded and cannot issue login or credential requests")
+
         let rpc = FakeRPC()
         let m = model(rpc)
         rpc.event("turn/started", turn("A", "turnA"))
