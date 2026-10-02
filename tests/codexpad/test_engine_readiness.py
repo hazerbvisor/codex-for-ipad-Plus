@@ -17,7 +17,7 @@ class EngineReadinessTests(unittest.TestCase):
         self.report = Path(work.name) / "report.json"
 
     def write(self, ready, revision):
-        self.report.write_text(json.dumps(dict(ready=ready, runtimeRevision=revision, events=[])))
+        self.report.write_text(json.dumps(dict(ready=ready, runtimeRevision=revision, accountReadable=True, events=[])))
 
     def test_ready_matching_runtime(self):
         self.write(True, "matching-revision")
@@ -31,6 +31,12 @@ class EngineReadinessTests(unittest.TestCase):
     def test_failed_connection_is_rejected(self):
         self.write(False, "")
         with self.assertRaisesRegex(RuntimeError, "failed before readiness"):
+            probe.wait_for_report(self.report, "matching-revision", timeout=1)
+
+    def test_account_read_failure_is_rejected(self):
+        self.report.write_text(json.dumps(dict(ready=True, runtimeRevision="matching-revision",
+                                              accountReadable=False, events=[])))
+        with self.assertRaisesRegex(RuntimeError, "account state needed for sign-in"):
             probe.wait_for_report(self.report, "matching-revision", timeout=1)
 
     def test_absent_report_is_bounded(self):

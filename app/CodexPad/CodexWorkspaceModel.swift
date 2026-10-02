@@ -313,8 +313,8 @@ final class CodexWorkspaceModel: ObservableObject {
                 }
                 enginePhase = .ready
                 appendRuntime("Connected to Codex app-server on guest loopback")
-                writeEngineSmokeReport()
                 await refreshAccount()
+                writeEngineSmokeReport()
                 await refreshModels()
                 await refreshCollaborationModes()
                 await restoreLinkedFolderState()
@@ -342,9 +342,10 @@ final class CodexWorkspaceModel: ObservableObject {
         let report: [String: Any] = [
             "ready": enginePhase.isReady,
             "runtimeRevision": runtimeRevision ?? "",
+            "accountReadable": runtimeLog.contains { $0.hasPrefix("authentication.account.read.ok") },
             "events": runtimeLog.filter {
                 $0.hasPrefix("engine.connect.") || $0.hasPrefix("runtime.validation.") ||
-                $0 == "protocol.initialize.ok"
+                $0 == "protocol.initialize.ok" || $0.hasPrefix("authentication.account.read.")
             }
         ]
         do {

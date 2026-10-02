@@ -31,6 +31,8 @@ def wait_for_report(path, expected_revision, timeout=240):
                 raise RuntimeError("Engine failed before readiness: " + json.dumps(report, sort_keys=True))
             if report.get("runtimeRevision") != expected_revision:
                 raise RuntimeError("Engine connected to a different guest runtime revision")
+            if report.get("accountReadable") is not True:
+                raise RuntimeError("Engine could not read the account state needed for sign-in")
             return report
         time.sleep(1)
     raise RuntimeError("App did not publish an engine readiness result before the timeout")
@@ -51,14 +53,31 @@ def probe(app, output, expected_revision):
         run("xcrun", "simctl", "boot", device)
         run("xcrun", "simctl", "bootstatus", device, "-b", timeout=300)
         run("xcrun", "simctl", "install", device, str(app.resolve()))
-        run("xcrun", "simctl", "launch", device, identifier, "--codexpad-engine-smoke")
-        container = Path(run("xcrun", "simctl", "get_app_container",
-                             device, identifier, "data").strip())
-        report = wait_for_report(container / "Documents/CodexPadEngineSmoke.json",
-                                 expected_revision)
+        container = None
+        for launch_index in range(3):
+            if container is not None:
+                run("xcrun", "simctl", "terminate", device, identifier)
+                # Keep the saved Linux root and log. Rust's startup check must
+                # also work when stdout/stderr point at a nonempty log file.
+                server_logs = list(container.rglob("app-server.log"))
+                if len(server_logs) != 1:
+                    raise RuntimeError("Expected one saved guest app-server log")
+                if server_logs[0].stat().st_size == 0:
+                    server_logs[0].write_text("CodexPad saved-root startup regression\n")
+                # Remove only the report this disposable test app just wrote.
+                (container / "Documents/CodexPadEngineSmoke.json").unlink(missing_ok=True)
+            run("xcrun", "simctl", "launch", device, identifier, "--codexpad-engine-smoke")
+            container = Path(run("xcrun", "simctl", "get_app_container",
+                                 device, identifier, "data").strip())
+            report = wait_for_report(container / "Documents/CodexPadEngineSmoke.json",
+                                     expected_revision)
+            (output / ("engine-readiness-%d.json" % (launch_index + 1))).write_text(
+                json.dumps(report, indent=2) + "\n")
+            print("Engine readiness launch %d: " % (launch_index + 1) +
+                  json.dumps(report, sort_keys=True), flush=True)
         (output / "engine-readiness.json").write_text(json.dumps(report, indent=2) + "\n")
-        print("Engine readiness: " + json.dumps(report, sort_keys=True), flush=True)
-        print("PASS: real iPad simulator app initialized Codex and verified the packaged guest revision", flush=True)
+        print("PASS: three real iPad launches initialized Codex, verified the saved guest revision, "
+              "and read account state for sign-in", flush=True)
     finally:
         # Only this newly-created disposable simulator is cleaned up.
         # No existing device, root, credential, or build cache is touched.
