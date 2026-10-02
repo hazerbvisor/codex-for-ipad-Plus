@@ -20,6 +20,9 @@ async def handle(socket):
             if "id" not in request:
                 continue
             identifier = request["id"]
+            if method == "initialize" and socket.request.path == "/bad-initialize":
+                await socket.send("invalid-json-fixture")
+                continue
             result = request.get("params") or {}
             if method == "probe/hang":
                 continue

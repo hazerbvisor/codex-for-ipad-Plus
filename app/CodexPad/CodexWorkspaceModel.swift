@@ -274,7 +274,10 @@ final class CodexWorkspaceModel: ObservableObject {
     private func performEngineConnection() async {
         guard !isConnecting else { return }
         isConnecting = true
-        defer { isConnecting = false }
+        defer {
+            isConnecting = false
+            writeEngineSmokeReport()
+        }
         enginePhase = .starting
         errorBanner = nil
         runtimeRevision = nil
@@ -296,6 +299,7 @@ final class CodexWorkspaceModel: ObservableObject {
                 }
                 enginePhase = .ready
                 appendRuntime("Connected to Codex app-server on guest loopback")
+                writeEngineSmokeReport()
                 await refreshAccount()
                 await refreshModels()
                 await refreshCollaborationModes()
@@ -313,6 +317,27 @@ final class CodexWorkspaceModel: ObservableObject {
         let message = "The local Codex service did not become ready. Open Terminal to inspect the guest runtime."
         enginePhase = .offline(message: message)
         errorBanner = message
+    }
+
+    private func writeEngineSmokeReport() {
+        guard ProcessInfo.processInfo.arguments.contains("--codexpad-engine-smoke"),
+              let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        // Disposable simulator validation only. No account, URL, server payload,
+        // credential, or user-file contents are included in the report.
+        let report: [String: Any] = [
+            "ready": enginePhase.isReady,
+            "runtimeRevision": runtimeRevision ?? "",
+            "events": runtimeLog.filter {
+                $0.hasPrefix("engine.connect.") || $0.hasPrefix("runtime.validation.") ||
+                $0 == "protocol.initialize.ok"
+            }
+        ]
+        do {
+            let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+            try data.write(to: directory.appendingPathComponent("CodexPadEngineSmoke.json"), options: .atomic)
+        } catch {
+            NSLog("CodexPad engine smoke report could not be written")
+        }
     }
 
     private func verifyRuntimeRevision() async throws {
