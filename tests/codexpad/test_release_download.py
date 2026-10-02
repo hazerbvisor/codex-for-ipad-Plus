@@ -20,7 +20,7 @@ spec.loader.exec_module(download)
 
 
 class ReleaseDownloadTests(unittest.TestCase):
-    def run_fixture(self, *, member=None, machine=183, bad_hash=False):
+    def run_fixture(self, *, member=None, machine=183, bad_hash=False, component='app-server', bad_binary_hash=False):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / 'Dependencies').mkdir()
@@ -31,7 +31,7 @@ class ReleaseDownloadTests(unittest.TestCase):
             binary[:6] = b'\x7fELF\x02\x01'
             struct.pack_into('<H', binary, 18, machine)
             struct.pack_into('<H', binary, 54, 56)
-            asset = 'codex-app-server-aarch64-unknown-linux-musl.tar.gz'
+            asset = f'codex-{component}-aarch64-unknown-linux-musl.tar.gz'
             archive = root / 'archive.tar.gz'
             with tarfile.open(archive, 'w:gz') as bundle:
                 entry = tarfile.TarInfo(member or asset.removesuffix('.tar.gz'))
@@ -42,31 +42,43 @@ class ReleaseDownloadTests(unittest.TestCase):
                                'target': 'aarch64-unknown-linux-musl',
                                'release': {'tag': 'rust-v0.155.0-alpha.4', 'asset': asset,
                                            'sha256': '0' * 64 if bad_hash else digest}}}
+            if component == 'code-mode-host':
+                config['codex']['codeModeHostRelease'] = dict(
+                    asset=asset, sha256='0' * 64 if bad_hash else digest,
+                    binarySha256='0' * 64 if bad_binary_hash else hashlib.sha256(binary).hexdigest())
             (root / 'Dependencies/upstreams.json').write_text(json.dumps(config))
-            output = root / 'codex-app-server'
+            output = root / f'codex-{component}'
             output.write_bytes(b'previous verified output')
             argv = ['download', '--archive', str(archive), '--output', str(output),
-                    '--cache-dir', str(root / 'cache')]
+                    '--cache-dir', str(root / 'cache'), '--component', component]
             with patch.object(download, 'PROJECT', root), patch.object(sys, 'argv', argv):
                 try:
                     download.main()
                 except (ValueError, subprocess.CalledProcessError):
                     self.assertEqual(output.read_bytes(), b'previous verified output')
-                    self.assertFalse((root / 'codex-app-server.provenance.json').exists())
+                    self.assertFalse(Path(str(output) + '.provenance.json').exists())
                     raise
             self.assertEqual(output.read_bytes(), bytes(binary))
             self.assertTrue(output.stat().st_mode & 0o111)
-            manifest = json.loads((root / 'codex-app-server.provenance.json').read_text())
+            manifest = json.loads(Path(str(output) + '.provenance.json').read_text())
             self.assertEqual(manifest['binarySha256'], hashlib.sha256(binary).hexdigest())
             # Reuse the verified cache with the original archive removed; no network.
             archive.unlink()
-            argv = ['download', '--output', str(output), '--cache-dir', str(root / 'cache')]
+            argv = ['download', '--output', str(output), '--cache-dir', str(root / 'cache'), '--component', component]
             with patch.object(download, 'PROJECT', root), patch.object(sys, 'argv', argv):
                 download.main()
             self.assertEqual(output.read_bytes(), bytes(binary))
 
     def test_verified_artifact_and_offline_cache(self):
         self.run_fixture()
+
+    def test_verified_helper_and_offline_cache(self):
+        self.run_fixture(component='code-mode-host')
+
+    def test_helper_corruption_and_wrong_architecture_preserve_output(self):
+        for kwargs in (dict(bad_hash=True), dict(bad_binary_hash=True), dict(machine=62), dict(member='../escaped')):
+            with self.subTest(kwargs=kwargs), self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                self.run_fixture(component='code-mode-host', **kwargs)
 
     def test_corruption_preserves_existing_output(self):
         with self.assertRaisesRegex(ValueError, 'SHA-256 mismatch'):

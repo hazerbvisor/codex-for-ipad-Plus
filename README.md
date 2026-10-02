@@ -140,7 +140,7 @@ codemagic.yaml                Hosted unsigned IPA build pipeline
 Important scripts:
 
 - `scripts/prepare-arm64-ios.py` — creates the disposable staged ARM64 Xcode project.
-- `scripts/download-codex-arm64.py` — downloads and verifies the pinned official AArch64 Codex app-server.
+- `scripts/download-codex-arm64.py` — downloads and verifies the pinned official AArch64 Codex app-server and Code Mode helper.
 - `scripts/build-codex-arm64.sh` — optional local source-build fallback.
 - `scripts/package-runtime-arm64.sh` — packages the Alpine AArch64 runtime.
 
@@ -175,10 +175,11 @@ Typical final artifact:
 CodexPad-ARM64-unsigned.ipa
 ```
 
-To download the pinned app-server locally:
+To download the pinned app-server and matching Code Mode helper locally:
 
 ```sh
 python3 scripts/download-codex-arm64.py --output artifacts/codex-app-server
+python3 scripts/download-codex-arm64.py --component code-mode-host --output artifacts/codex-code-mode-host
 ```
 
 See [`docs/CODEMAGIC_ARM64.md`](docs/CODEMAGIC_ARM64.md) for the full hosted-build path.

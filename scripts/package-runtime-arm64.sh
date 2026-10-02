@@ -87,41 +87,47 @@ install -D -m 0644 "$project_root/THIRD_PARTY_NOTICES.md" \
     "$root/usr/local/share/codexpad/THIRD_PARTY_NOTICES.md"
 if [[ -n "${CODEX_BINARY:-}" ]]; then
     : "${CODEX_SOURCE_DIR:?Set CODEX_SOURCE_DIR to the exact pinned Codex checkout when packaging Codex}"
+    : "${CODEX_CODE_MODE_HOST_BINARY:?Set CODEX_CODE_MODE_HOST_BINARY to the verified matching release helper}"
     test "$(git -C "$CODEX_SOURCE_DIR" rev-parse HEAD)" = "$codex_revision"
     test -f "$CODEX_SOURCE_DIR/LICENSE"
-    python3 "$project_root/scripts/check-arm64-elf.py" --static "$CODEX_BINARY"
-    if [[ -f "$CODEX_BINARY.provenance.json" ]]; then
-        python3 - "$codex_config" "$CODEX_BINARY" <<'VERIFY_RELEASE'
+    for component in codex-app-server codex-code-mode-host; do
+        binary="$CODEX_BINARY"
+        [[ "$component" != codex-code-mode-host ]] || binary="$CODEX_CODE_MODE_HOST_BINARY"
+        python3 "$project_root/scripts/check-arm64-elf.py" --static "$binary"
+        if [[ "$component" == codex-code-mode-host || -f "$binary.provenance.json" ]]; then
+            python3 - "$codex_config" "$binary" "$component" <<'VERIFY_RELEASE'
 import hashlib, json, pathlib, sys
 config = json.load(open(sys.argv[1]))['codex']
 binary = pathlib.Path(sys.argv[2])
 provenance = json.load(open(str(binary) + '.provenance.json'))
+release = config['release'] if sys.argv[3] == 'codex-app-server' else config['codeModeHostRelease']
 expected = {'source': 'official-release', 'repository': config['repository'],
             'revision': config['revision'], 'target': config['target'],
-            'tag': config['release']['tag'], 'archiveSha256': config['release']['sha256']}
+            'tag': config['release']['tag'], 'archiveSha256': release['sha256']}
 if any(provenance.get(key) != value for key, value in expected.items()):
     raise SystemExit('Official release provenance differs from the pin')
 if provenance.get('binarySha256') != hashlib.sha256(binary.read_bytes()).hexdigest():
     raise SystemExit('Official release binary differs from its verified provenance')
 VERIFY_RELEASE
-        install -D -m 0644 "$CODEX_BINARY.provenance.json" \
-            "$root/usr/local/share/codexpad/codex-app-server.provenance.json"
-    fi
+            install -D -m 0644 "$binary.provenance.json" \
+                "$root/usr/local/share/codexpad/$component.provenance.json"
+        fi
+        install -D -m 0755 "$binary" "$root/usr/local/libexec/codexpad/$component"
+        sha256sum "$binary" | awk -v path="/usr/local/libexec/codexpad/$component" '{print $1 "  " path}' \
+            > "$root/usr/local/share/codexpad/$component.sha256"
+    done
     install -D -m 0644 "$CODEX_SOURCE_DIR/LICENSE" \
         "$root/usr/local/share/licenses/codex/LICENSE"
-    install -D -m 0755 "$CODEX_BINARY" "$root/usr/local/libexec/codexpad/codex-app-server"
     install -D -m 0755 "$project_root/runtime/etc/init.d/codexpad" "$root/etc/init.d/codexpad"
     install -D -m 0644 "$project_root/runtime/etc/profile.d/codexpad.sh" "$root/etc/profile.d/codexpad.sh"
     install -d -m 0755 "$root/etc/runlevels/default"
     ln -s /etc/init.d/codexpad "$root/etc/runlevels/default/codexpad"
-    sha256sum "$CODEX_BINARY" | awk '{print $1 "  /usr/local/libexec/codexpad/codex-app-server"}' \
-        > "$root/usr/local/share/codexpad/codex-app-server.sha256"
 fi
 install -d -m 0755 "$root/usr/local/share/codexpad"
 jq -n --arg ishRevision "$revision" --arg alpineRelease "$release" \
     --arg target "$target" --arg codexRevision "$codex_revision" \
     --argjson hasAppServer "$(test -n "${CODEX_BINARY:-}" && echo true || echo false)" \
-    '{schemaVersion: 1, ishRevision: $ishRevision, alpineRelease: $alpineRelease, target: $target, hasAppServer: $hasAppServer, codexRevision: (if $hasAppServer then $codexRevision else null end)}' \
+    '{schemaVersion: 1, ishRevision: $ishRevision, alpineRelease: $alpineRelease, target: $target, hasAppServer: $hasAppServer, hasCodeModeHost: $hasAppServer, codexRevision: (if $hasAppServer then $codexRevision else null end)}' \
     > "$root/usr/local/share/codexpad/runtime.json"
 tar --numeric-owner --owner=0 --group=0 -czf "$OUTPUT_ROOTFS" -C "$root" .
 if [[ -n "${CODEX_BINARY:-}" ]]; then

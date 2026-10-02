@@ -80,7 +80,15 @@ To stage a verified download locally:
 
 ```sh
 python3 scripts/download-codex-arm64.py --output artifacts/codex-app-server
+python3 scripts/download-codex-arm64.py --component code-mode-host --output artifacts/codex-code-mode-host
 ```
+
+Both downloads share the release tag and source pin. The helper's archive and
+binary hashes are pinned in `codeModeHostRelease`. Packaging requires
+`CODEX_CODE_MODE_HOST_BINARY` and installs both executables beside each other
+inside the single `root.tar.gz`; neither executable is bundled a second time.
+See [`code-mode-host-repair.md`](code-mode-host-repair.md) for the existing-guest
+upgrade and actual emulator execution evidence.
 
 ## Why native apk-tools is used
 

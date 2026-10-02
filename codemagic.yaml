@@ -92,6 +92,7 @@ workflows:
           python3 tests/codexpad/test_imported_runtime.py
           python3 tests/codexpad/test_ipa_runtime.py
           python3 tests/codexpad/test_runtime_archive.py
+          python3 tests/codexpad/test_code_mode_probe.py
           model_bundle=/tmp/CodexPadModelRegression.app/Contents
           mkdir -p "$model_bundle/MacOS" "$model_bundle/Resources"
           cp app/CodexPad/CodexClientRequest.schema.json "$model_bundle/Resources/"
@@ -130,6 +131,9 @@ workflows:
           export CODEX_BINARY="$CM_BUILD_DIR/artifacts/codex-app-server"
           python3 scripts/download-codex-arm64.py --output "$CODEX_BINARY" \
             --cache-dir "$HOME/.codexpad-codex-releases"
+          export CODEX_CODE_MODE_HOST_BINARY="$CM_BUILD_DIR/artifacts/codex-code-mode-host"
+          python3 scripts/download-codex-arm64.py --component code-mode-host \
+            --output "$CODEX_CODE_MODE_HOST_BINARY" --cache-dir "$HOME/.codexpad-codex-releases"
           export APK_TOOLS_CACHE_DIR="$HOME/.codexpad-apk-tools"
           bash scripts/build-apk-tools-macos.sh
           export APK_HOST_BINARY="$APK_TOOLS_CACHE_DIR/bin/apk"
@@ -152,6 +156,7 @@ workflows:
           export PATH="$(brew --prefix lld)/bin:$(brew --prefix llvm)/bin:$PATH"
           command -v ld.lld
           git submodule update --init --recursive upstream/ios-linuxkit
+          python3 tests/codexpad/test_runtime_upgrade.py
           python3 tests/codexpad/test_ios_staging.py
           python3 scripts/tests/test_arm64_halfword_lanes.py
           python3 scripts/tests/test_arm64_pmull.py
@@ -190,6 +195,7 @@ workflows:
       - artifacts/xcodebuild-arm64.log
       - artifacts/derived-arm64/**/ninja-build.log
       - artifacts/codex-app-server.provenance.json
+      - artifacts/codex-code-mode-host.provenance.json
       - artifacts/CodexPad-ARM64-unsigned.ipa
       - artifacts/codexpad-runtime-arm64.tar.gz
       - artifacts/codexpad-runtime-arm64.tar.gz.sha256

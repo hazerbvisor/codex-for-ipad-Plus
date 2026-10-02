@@ -131,6 +131,8 @@ class StagingTests(unittest.TestCase):
             self.assertNotIn('URLForResource:@"root"', roots)
             self.assertEqual((output / 'app/CodexPadRuntimeRoot.inc').read_bytes(),
                              (PROJECT / 'scripts/CodexPadRuntimeRoot.inc').read_bytes())
+            self.assertEqual((output / 'app/CodexPadRuntimeUpgrade.c').read_bytes(),
+                             (PROJECT / 'scripts/CodexPadRuntimeUpgrade.c').read_bytes())
             delegate = (output / 'app/AppDelegate.m').read_text()
             self.assertLess(delegate.index('CodexPadPrepareRuntimeRoot'), delegate.index('mount_root(&fakefs'))
             download = (output / 'app/download-root.sh').read_text()

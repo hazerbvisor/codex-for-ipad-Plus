@@ -3,7 +3,6 @@ import importlib.util
 import io
 import json
 from pathlib import Path
-import re
 import ssl
 import tarfile
 import tempfile
@@ -23,12 +22,12 @@ class RuntimeArchiveTests(unittest.TestCase):
         self.codex = json.loads((PROJECT / 'Dependencies/upstreams.json').read_text())['codex']
         self.runtime = json.loads((PROJECT / 'Dependencies/arm64-runtime.json').read_text())
         binary = b'\x7fELF\x02\x01' + bytes(12) + (183).to_bytes(2, 'little')
-        manifest = dict(schemaVersion=1, hasAppServer=True, codexRevision=self.codex['revision'],
+        manifest = dict(schemaVersion=1, hasAppServer=True, hasCodeModeHost=True, codexRevision=self.codex['revision'],
                         ishRevision=self.runtime['revision'], target=self.codex['target'],
                         alpineRelease=self.runtime['alpineRelease'])
-        # Public system CA certificate, never a private key or user credential.
-        bundle = Path(ssl.get_default_verify_paths().cafile).read_bytes()
-        certificate = re.search(rb'-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', bundle, re.S).group()
+        # Public ISRG Root X1 certificate (letsencrypt.org/certs/isrgrootx1.pem).
+        # A fixed fixture also works before macOS Python's CA store is configured.
+        certificate = (PROJECT / 'tests/codexpad/fixtures/isrg-root-x1.crt').read_bytes()
         self.files = {
             'usr/local/libexec/codexpad/codex-app-server': binary,
             'usr/local/share/codexpad/codex-app-server.sha256':
@@ -47,6 +46,15 @@ class RuntimeArchiveTests(unittest.TestCase):
                            for module in ('os.py', 'ssl.py', 'subprocess.py', 'json/__init__.py')})
         self.links = {}
         self.runlevel = '/etc/init.d/codexpad'
+        helper_hash = hashlib.sha256(binary).hexdigest()
+        self.codex['codeModeHostRelease']['binarySha256'] = helper_hash
+        self.files['usr/local/libexec/codexpad/codex-code-mode-host'] = binary
+        self.files['usr/local/share/codexpad/codex-code-mode-host.sha256'] = (
+            helper_hash + '  /usr/local/libexec/codexpad/codex-code-mode-host\n').encode()
+        self.files['usr/local/share/codexpad/codex-code-mode-host.provenance.json'] = json.dumps(dict(
+            source='official-release', repository=self.codex['repository'], revision=self.codex['revision'],
+            target=self.codex['target'], tag=self.codex['release']['tag'],
+            archiveSha256=self.codex['codeModeHostRelease']['sha256'], binarySha256=helper_hash)).encode()
 
     def package(self):
         with tarfile.open(self.archive, 'w:gz') as root:
@@ -72,6 +80,25 @@ class RuntimeArchiveTests(unittest.TestCase):
 
     def test_complete_archive(self):
         self.verify()
+
+    def test_missing_helper_and_metadata_are_rejected(self):
+        for path in ('usr/local/libexec/codexpad/codex-code-mode-host',
+                     'usr/local/share/codexpad/codex-code-mode-host.sha256',
+                     'usr/local/share/codexpad/codex-code-mode-host.provenance.json'):
+            with self.subTest(path=path):
+                data = self.files.pop(path)
+                with self.assertRaises(ValueError): self.verify()
+                self.files[path] = data
+
+    def test_corrupt_helper_is_rejected(self):
+        self.files['usr/local/libexec/codexpad/codex-code-mode-host'] += b'corruption'
+        with self.assertRaisesRegex(ValueError, 'pinned official binary'): self.verify()
+
+    def test_helper_from_different_release_is_rejected(self):
+        path = 'usr/local/share/codexpad/codex-code-mode-host.provenance.json'
+        provenance = json.loads(self.files[path]); provenance['tag'] = 'rust-v0.1.0'
+        self.files[path] = json.dumps(provenance).encode()
+        with self.assertRaisesRegex(ValueError, 'helper provenance'): self.verify()
 
     def test_missing_guest_tools_and_stdlib_are_rejected(self):
         for path in (*check.GUEST_PROGRAMS, 'usr/lib/python3/ssl.py'):

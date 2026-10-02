@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage the checksum-pinned official Linux AArch64 musl app-server."""
+"""Stage a checksum-pinned official Linux AArch64 musl Codex component."""
 
 import argparse
 import hashlib
@@ -28,15 +28,16 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--cache-dir', type=Path)
     parser.add_argument('--archive', type=Path, help='Verify a previously downloaded archive')
+    parser.add_argument('--component', choices=('app-server', 'code-mode-host'), default='app-server')
     args = parser.parse_args()
     config = json.loads((PROJECT / 'Dependencies/upstreams.json').read_text())['codex']
-    release = config['release']
+    release = config['release'] if args.component == 'app-server' else config['codeModeHostRelease']
     asset = release['asset']
-    tag = release['tag']
+    tag = config['release']['tag']  # Both components must come from the same pinned release.
     expected = release['sha256']
     if (config['repository'] != 'openai/codex'
             or config['target'] != 'aarch64-unknown-linux-musl'
-            or asset != 'codex-app-server-aarch64-unknown-linux-musl.tar.gz'
+            or asset != f'codex-{args.component}-aarch64-unknown-linux-musl.tar.gz'
             or not re.fullmatch(r'rust-v[0-9A-Za-z.\-]+', tag)
             or not re.fullmatch(r'[0-9a-f]{64}', expected)):
         raise ValueError('Invalid official ARM64 release pin')
@@ -57,7 +58,7 @@ def main():
                                 '--silent', '--show-error', url, '--output', str(archive)], check=True)
         if sha256(archive) != expected:
             raise ValueError('Official Codex archive SHA-256 mismatch')
-        binary = work / 'codex-app-server'
+        binary = work / f'codex-{args.component}'
         with tarfile.open(archive, 'r:gz') as bundle:
             members = bundle.getmembers()
             if (len(members) != 1 or members[0].name != asset.removesuffix('.tar.gz')
@@ -67,6 +68,8 @@ def main():
                 shutil.copyfileobj(source, destination)
         subprocess.run(['python3', str(PROJECT / 'scripts/check-arm64-elf.py'),
                         '--static', str(binary)], check=True)
+        if args.component == 'code-mode-host' and sha256(binary) != release['binarySha256']:
+            raise ValueError('Official Code Mode helper binary SHA-256 mismatch')
         binary.chmod(0o755)
         provenance = {'schemaVersion': 1, 'source': 'official-release',
                       'repository': config['repository'], 'revision': config['revision'],
@@ -85,7 +88,7 @@ def main():
         os.replace(binary, args.output)
         manifest = args.output.with_name(args.output.name + '.provenance.json')
         manifest.write_text(json.dumps(provenance, indent=2) + '\n')
-        print(f'Verified official {tag}: static AArch64 app-server -> {args.output}')
+        print(f'Verified official {tag}: static AArch64 {args.component} -> {args.output}')
 
 
 if __name__ == '__main__':

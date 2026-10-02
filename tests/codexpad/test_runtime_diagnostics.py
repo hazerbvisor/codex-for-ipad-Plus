@@ -83,6 +83,7 @@ class DiagnosticTests(unittest.TestCase):
     def test_initialized_authenticated_server(self):
         rows = self.probe()
         self.assertEqual(rows['runtime']['status'], 'invalid')
+        self.assertEqual(rows['runtime.code-mode-host']['status'], 'missing')
         self.assertEqual(rows['boot']['status'], 'not-started')
         self.assertEqual(rows['service']['status'], 'not-started')
         self.assertEqual(rows['server']['status'], 'pid-unavailable')

@@ -121,6 +121,7 @@ def stage(destination: Path) -> None:
     darwin_path.write_text(darwin)
     app = destination / "app"
     shutil.copy2(PROJECT / "scripts/CodexPadRuntimeRoot.inc", app / "CodexPadRuntimeRoot.inc")
+    shutil.copy2(PROJECT / "scripts/CodexPadRuntimeUpgrade.c", app / "CodexPadRuntimeUpgrade.c")
     roots_path = app / "Roots.m"
     roots = replace_one(roots_path.read_text(), "@implementation Roots\n",
                         '#include "CodexPadRuntimeRoot.inc"\n\n@implementation Roots\n')

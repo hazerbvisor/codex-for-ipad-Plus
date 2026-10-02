@@ -6,6 +6,11 @@
     "rustToolchain": "1.95.0",
     "target": "aarch64-unknown-linux-musl",
     "protocol": "v2",
+    "codeModeHostRelease": {
+      "asset": "codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz",
+      "sha256": "43f9f5312eccb39f49358de22cfce16bbd1071ce9556a296bde67d03e431e0be",
+      "binarySha256": "2797f9eb4457a7ee689b4eaead3981da32cce4ea3df6575800bca7de69b7ad47"
+    },
     "release": {
       "tag": "rust-v0.155.0-alpha.4",
       "asset": "codex-app-server-aarch64-unknown-linux-musl.tar.gz",
