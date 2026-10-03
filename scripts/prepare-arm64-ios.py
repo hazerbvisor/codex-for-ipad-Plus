@@ -113,7 +113,7 @@ def stage(destination: Path) -> None:
         raise ValueError(f"ARM64 fork revision mismatch: {actual}")
     if destination.exists():
         raise ValueError(f"Stage destination already exists: {destination}")
-    if len(SWIFT_FILES) != 14:
+    if len(SWIFT_FILES) != 15:
         raise ValueError("CodexPad Swift file set changed; review the Xcode integration")
 
     shutil.copytree(FORK, destination, symlinks=True,

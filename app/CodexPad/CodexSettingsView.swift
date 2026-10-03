@@ -98,6 +98,7 @@ struct CodexSettingsView: View {
 
     private var modelSection: some View {
         Section {
+            CodexModelPickerButton(model: model, title: "Browse all models or add a model ID")
             if model.availableModels.isEmpty {
                 LabeledContent("Catalog") {
                     ProgressView().controlSize(.small)
@@ -117,9 +118,11 @@ struct CodexSettingsView: View {
                 }
 
                 if let selected = model.selectedModel {
-                    Picker("Reasoning", selection: reasoningSelection) {
-                        ForEach(selected.reasoningEfforts) { effort in
-                            Text(effort.effort.capitalized).tag(effort.effort)
+                    if !selected.reasoningEfforts.isEmpty {
+                        Picker("Reasoning", selection: reasoningSelection) {
+                            ForEach(selected.reasoningEfforts) { effort in
+                                Text(effort.effort.capitalized).tag(effort.effort)
+                            }
                         }
                     }
 
@@ -149,7 +152,7 @@ struct CodexSettingsView: View {
                     await model.refreshCollaborationModes()
                 }
             }
-            .disabled(!model.enginePhase.isReady)
+            .disabled(!model.enginePhase.isReady || model.isRefreshingModels)
         } header: {
             Text("Model")
         } footer: {

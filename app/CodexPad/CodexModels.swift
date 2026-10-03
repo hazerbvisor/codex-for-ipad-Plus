@@ -141,6 +141,17 @@ struct CodexModelOption: Identifiable, Equatable, Sendable {
     var serviceTiers: [ModelServiceTierOption]
     var defaultServiceTier: String?
     var isDefault: Bool
+    var isCustom: Bool = false
+
+    static func custom(modelID: String) -> CodexModelOption {
+        CodexModelOption(
+            id: "custom:\(modelID)", model: modelID, displayName: modelID,
+            description: "Custom model ID. Availability depends on your provider and account.",
+            hidden: false, reasoningEfforts: [], defaultReasoningEffort: "",
+            inputModalities: [], supportsPersonality: false, serviceTiers: [],
+            defaultServiceTier: nil, isDefault: false, isCustom: true
+        )
+    }
 }
 
 struct CollaborationModeOption: Identifiable, Equatable, Sendable {
