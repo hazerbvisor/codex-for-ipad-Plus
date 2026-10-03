@@ -8,6 +8,7 @@ private enum CodexPadPreferenceKey {
     static let linkedFilesFolder = "CodexPadLinkedFilesFolder"
     static let linkedFolderDisplayName = "CodexPadLinkedFolderDisplayName"
     static let selectedModel = "CodexPadSelectedModel"
+    static let customModels = "CodexPadCustomModels"
     static let selectedReasoningEffort = "CodexPadSelectedReasoningEffort"
     static let selectedServiceTier = "CodexPadSelectedServiceTier"
     static let selectedCollaborationMode = "CodexPadSelectedCollaborationMode"
@@ -74,6 +75,8 @@ final class CodexWorkspaceModel: ObservableObject {
         }
     }
     @Published var availableModels: [CodexModelOption] = []
+    @Published private(set) var customModelIDs: [String] = []
+    @Published private(set) var isRefreshingModels = false
     @Published var selectedModelID: String? {
         didSet { persistOptional(selectedModelID, key: CodexPadPreferenceKey.selectedModel) }
     }
@@ -153,6 +156,9 @@ final class CodexWorkspaceModel: ObservableObject {
         let rpc: any CodexRPCServing = rpc ?? (demoMode ? CodexDemoRPCClient() as any CodexRPCServing : CodexRPCClient())
         self.rpc = rpc
         self.demoMode = demoMode
+        customModelIDs = (preferences.stringArray(forKey: CodexPadPreferenceKey.customModels) ?? [])
+            .filter(Self.isValidModelID)
+        availableModels = customModelIDs.map { .custom(modelID: $0) }
         selectedModelID = preferences.string(forKey: CodexPadPreferenceKey.selectedModel)
         selectedReasoningEffort = preferences.string(forKey: CodexPadPreferenceKey.selectedReasoningEffort)
         selectedServiceTier = preferences.string(forKey: CodexPadPreferenceKey.selectedServiceTier)
@@ -443,7 +449,9 @@ final class CodexWorkspaceModel: ObservableObject {
     }
 
     func refreshModels() async {
-        guard enginePhase.isReady else { return }
+        guard enginePhase.isReady, !isRefreshingModels else { return }
+        isRefreshingModels = true
+        defer { isRefreshingModels = false }
         do {
             var cursor: String?
             var catalog: [CodexModelOption] = []
@@ -468,7 +476,15 @@ final class CodexWorkspaceModel: ObservableObject {
 
             var modelIDs: Set<String> = []
             catalog = catalog.filter { modelIDs.insert($0.id).inserted }
+            let providerSlugs = Set(catalog.map(\.model))
+            catalog.append(contentsOf: customModelIDs.filter { !providerSlugs.contains($0) }
+                .map { .custom(modelID: $0) })
+            let previousModelSlug = selectedModel?.model
             availableModels = catalog
+            if let previousModelSlug,
+               let match = catalog.first(where: { $0.model == previousModelSlug }) {
+                selectedModelID = match.id
+            }
             let selectedStillExists = catalog.contains { $0.id == selectedModelID }
             if !selectedStillExists {
                 selectedModelID = catalog.first(where: \.isDefault)?.id ?? catalog.first?.id
@@ -513,6 +529,51 @@ final class CodexWorkspaceModel: ObservableObject {
         selectedModelID = id
         selectedCollaborationMode = nil
         normalizeModelSelections(forceDefaults: true)
+    }
+
+    static func isValidModelID(_ id: String) -> Bool {
+        !id.isEmpty && id.utf8.count <= 200 && id.unicodeScalars.allSatisfy {
+            CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:/").contains($0)
+        }
+    }
+
+    @discardableResult
+    func addCustomModel(_ input: String) -> Bool {
+        let slug = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.isValidModelID(slug) else { return false }
+        if let existing = availableModels.first(where: { $0.model == slug }) {
+            selectModel(existing.id)
+            return true
+        }
+        if !customModelIDs.contains(slug) {
+            customModelIDs.append(slug)
+            preferences.set(customModelIDs, forKey: CodexPadPreferenceKey.customModels)
+        }
+        let option = CodexModelOption.custom(modelID: slug)
+        availableModels.append(option)
+        selectModel(option.id)
+        return true
+    }
+
+    func removeCustomModel(_ slug: String) {
+        customModelIDs.removeAll { $0 == slug }
+        preferences.set(customModelIDs, forKey: CodexPadPreferenceKey.customModels)
+        availableModels.removeAll { $0.isCustom && $0.model == slug }
+        if !availableModels.contains(where: { $0.id == selectedModelID }) {
+            selectedModelID = availableModels.first(where: \.isDefault)?.id ?? availableModels.first?.id
+            selectedCollaborationMode = nil
+            normalizeModelSelections(forceDefaults: true)
+        }
+    }
+
+    private func modelIdentityInstructions(for model: CodexModelOption) -> String {
+        """
+        Model identity supplied by the CodexPad client: the configured model ID is \(model.model).
+        When asked which model you are, identify yourself as Codex with configured model ID \(model.model).
+        Use this exact ID instead of a generic family name such as GPT-5 from the base instructions or an earlier reply.
+        This is the client's configured model, not independent verification of backend routing.
+        If runtime information reports a different model, explain that distinction rather than claiming the configured ID was verified.
+        """
     }
 
     func chooseFilesFolder() async {
@@ -945,7 +1006,7 @@ final class CodexWorkspaceModel: ObservableObject {
         // complete intent before that await; another thread's controls and
         // newly typed text must not alter or disappear into this request.
         let sourceThreadID = selectedThreadID
-        let modelAtSend = selectedModel?.model
+        let modelAtSend = selectedModel
         let effortAtSend = selectedReasoningEffort
         let tierAtSend = selectedServiceTier
         let collaborationAtSend = collaborationModePayload
@@ -991,7 +1052,16 @@ final class CodexWorkspaceModel: ObservableObject {
                 ])
             ]
             if let modelAtSend {
-                params["model"] = .string(modelAtSend)
+                params["model"] = .string(modelAtSend.model)
+                // The pinned engine supports experimental application context;
+                // initialize already opts in. Unlike thread/resume overrides,
+                // this reaches attached threads and follows every model switch.
+                params["additionalContext"] = .object([
+                    "codexpad.model-identity": .object([
+                        "kind": .string("application"),
+                        "value": .string(modelIdentityInstructions(for: modelAtSend))
+                    ])
+                ])
             }
             params["serviceTier"] = tierAtSend.map(JSONValue.string) ?? .null
             if let effortAtSend {

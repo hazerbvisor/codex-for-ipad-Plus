@@ -82,6 +82,10 @@ Browser and device-code behavior still needs to be treated as **device-validatio
 
 After the local engine connects, CodexPad Plus requests the model catalog from the active Codex provider and exposes the options returned by the server.
 
+The composer opens a searchable model picker with visible and hidden provider entries, exact model IDs, and a refresh action. If a model is missing from the catalog, add its exact provider ID under **Add a model by ID**. Custom IDs and their selection are saved across app launches; swipe a custom entry to delete it. Adding an ID does not grant account access. Custom models use provider defaults until the catalog advertises their reasoning and service-tier capabilities.
+
+Every message includes application context identifying its configured model ID. This keeps answers to model-identity questions aligned with the selection, including after a model switch or reopening an older thread, while preserving existing thread instructions. The ID describes the requested configuration; it does not independently verify backend routing.
+
 Depending on the selected model/server capabilities, the UI can expose:
 
 - Model selection.

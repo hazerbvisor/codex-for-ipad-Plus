@@ -230,34 +230,9 @@ private struct ComposerBar: View {
     private var modelControls: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Menu {
-                    ForEach(model.availableModels.filter { !$0.hidden }) { option in
-                        Button {
-                            model.selectModel(option.id)
-                        } label: {
-                            if option.id == model.selectedModelID {
-                                Label(option.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(option.displayName)
-                            }
-                        }
-                    }
-                    if model.availableModels.contains(where: \.hidden) {
-                        Section("Hidden provider entries") {
-                            ForEach(model.availableModels.filter(\.hidden)) { option in
-                                Button("\(option.displayName) - Hidden") {
-                                    model.selectModel(option.id)
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    Label(model.selectedModel?.displayName ?? "Model", systemImage: "chevron.down")
-                }
+                CodexModelPickerButton(model: model)
                 .buttonStyle(.plain)
                     .frame(minHeight: 44)
-                .disabled(model.availableModels.isEmpty)
-                .accessibilityIdentifier("codexpad.model-picker")
 
                 if let selected = model.selectedModel, !selected.reasoningEfforts.isEmpty {
                     Menu {
