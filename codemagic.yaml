@@ -163,6 +163,8 @@ workflows:
           python3 tests/codexpad/test_runtime_upgrade.py
           python3 tests/codexpad/test_ios_staging.py
           python3 tests/codexpad/test_poll_timeouts.py
+          python3 tests/codexpad/test_parent_death_signal.py
+          python3 tests/codexpad/test_pty_drain.py
           python3 scripts/tests/test_arm64_halfword_lanes.py
           python3 scripts/tests/test_arm64_pmull.py
           python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios

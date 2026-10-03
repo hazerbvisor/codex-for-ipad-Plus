@@ -104,6 +104,8 @@ Two other limits were observed and are not concealed:
   This is a separate remaining process-compatibility issue;
   shell/Python subprocess tests pass, but that does not establish Codex tool
   execution. The diagnostic was instead run directly as a guest command.
+  The command-spawn limitation is subsequently addressed by the staged kernel
+  patch described in [terminal-spawn-repair.md](terminal-spawn-repair.md).
 
 ## Packaging and regression checks
 
