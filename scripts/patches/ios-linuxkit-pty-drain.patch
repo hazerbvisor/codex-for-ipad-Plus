@@ -1,0 +1,52 @@
+--- a/fs/tty.c
++++ b/fs/tty.c
+@@ -445,8 +445,13 @@
+     lock(&pids_lock);
+     lock(&tty->lock);
+     if (tty->hung_up || pty_is_half_closed_master(tty)) {
+-        unlock(&pids_lock);
+-        goto error;
++        // A closed slave can still have unread output in the master buffer.
++        // Drain it before reporting EIO; slave-side reads retain EOF behavior.
++        if (tty->driver != &pty_master || tty->bufsize == 0) {
++            err = tty->driver == &pty_master ? _EIO : 0;
++            unlock(&pids_lock);
++            goto error;
++        }
+     }
+ 
+     pid_t_ current_pgid = current->group->pgid;
+@@ -477,8 +482,11 @@
+         size_t canon_size;
+         while ((canon_size = tty_canon_size(tty)) == (size_t) -1) {
+             err = _EIO;
+-            if (pty_is_half_closed_master(tty))
++            if (pty_is_half_closed_master(tty)) {
++                if (tty->bufsize > 0)
++                    goto drain;
+                 goto error;
++            }
+             err = _EAGAIN;
+             if (fd->flags & O_NONBLOCK_)
+                 goto error;
+@@ -506,8 +514,11 @@
+ 
+         while (tty->bufsize < min) {
+             err = _EIO;
+-            if (pty_is_half_closed_master(tty))
++            if (pty_is_half_closed_master(tty)) {
++                if (tty->bufsize > 0)
++                    goto drain;
+                 goto error;
++            }
+             err = _EAGAIN;
+             if (fd->flags & O_NONBLOCK_)
+                 goto error;
+@@ -520,6 +531,7 @@
+         }
+     }
+ 
++drain:
+     if (bufsize > tty->bufsize)
+         bufsize = tty->bufsize;
+     tty_read_into_buf(tty, buf, bufsize);

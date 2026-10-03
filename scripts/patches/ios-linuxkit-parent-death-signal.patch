@@ -1,0 +1,199 @@
+--- a/kernel/task.h
++++ b/kernel/task.h
+@@ -76,6 +76,7 @@
+ 
+     // locked by pids_lock
+     struct task *parent;
++    int parent_death_signal; // reset on fork, locked by pids_lock
+     struct list children;
+     struct list siblings;
+ 
+@@ -156,6 +157,7 @@
+ struct task *task_create_(struct task *parent);
+ // Removes the process from the process table and frees it. Must be called with pids_lock.
+ void task_destroy(struct task *task);
++void task_clear_parent_death_signal(struct task *task);
+ 
+ // misc
+ void vfork_notify(struct task *task);
+--- a/kernel/task.c
++++ b/kernel/task.c
+@@ -60,6 +60,8 @@
+     *task = (struct task) {};
+     if (parent != NULL)
+         *task = *parent;
++    // PR_SET_PDEATHSIG is per-task and is never inherited by fork/clone.
++    task->parent_death_signal = 0;
+     task->pid = pid->id;
+     pid->task = task;
+ 
+@@ -117,6 +119,12 @@
+     lock_init(&task->ptrace.lock);
+     cond_init(&task->ptrace.cond);
+     return task;
++}
++
++void task_clear_parent_death_signal(struct task *task) {
++    lock(&pids_lock);
++    task->parent_death_signal = 0;
++    unlock(&pids_lock);
+ }
+ 
+ // Deferred-free list for task structs.
+--- a/kernel/misc.c
++++ b/kernel/misc.c
+@@ -3,11 +3,30 @@
+ #include "kernel/calls.h"
+ #include "kernel/task.h"
+ 
++#define PRCTL_SET_PDEATHSIG_ 1
++#define PRCTL_GET_PDEATHSIG_ 2
+ #define PRCTL_SET_KEEPCAPS_ 8
+ #define PRCTL_SET_NAME_ 15
+ 
+ int_t sys_prctl(dword_t option, addr_t arg2, addr_t UNUSED(arg3), addr_t UNUSED(arg4), addr_t UNUSED(arg5)) {
+     switch (option) {
++        case PRCTL_SET_PDEATHSIG_:
++            STRACE("prctl(PR_SET_PDEATHSIG, %llu)", (unsigned long long) arg2);
++            if (arg2 > NUM_SIGS)
++                return _EINVAL;
++            lock(&pids_lock);
++            current->parent_death_signal = (int) arg2;
++            unlock(&pids_lock);
++            return 0;
++        case PRCTL_GET_PDEATHSIG_: {
++            STRACE("prctl(PR_GET_PDEATHSIG, %#llx)", (unsigned long long) arg2);
++            lock(&pids_lock);
++            int_t signal = current->parent_death_signal;
++            unlock(&pids_lock);
++            if (user_put(arg2, signal))
++                return _EFAULT;
++            return 0;
++        }
+         case PRCTL_SET_KEEPCAPS_:
+             // stub
+             return 0;
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -54,6 +54,25 @@
+     return pid_get_task(1);
+ }
+ 
++// Called with pids_lock held for normal exit and forced thread teardown.
++static void reparent_children(struct task *task) {
++    struct task *new_parent = find_new_parent(task);
++    struct task *child, *tmp;
++    list_for_each_entry_safe(&task->children, child, tmp, siblings) {
++        child->parent = new_parent;
++        list_remove(&child->siblings);
++        list_add(&new_parent->children, &child->siblings);
++        if (child->parent_death_signal != 0) {
++            struct siginfo_ info = {
++                .code = SI_USER_,
++                .kill.pid = task->tgid,
++                .kill.uid = task->uid,
++            };
++            send_signal(child, child->parent_death_signal, info);
++        }
++    }
++}
++
+ noreturn void do_exit(int status) {
+ #ifdef GUEST_ARM64
+     arm64_fusion_stats_dump_if_enabled();
+@@ -138,14 +157,8 @@
+     }
+     struct task *leader = current->group->leader;
+ 
+-    // reparent children
+-    struct task *new_parent = find_new_parent(current);
+-    struct task *child, *tmp;
+-    list_for_each_entry_safe(&current->children, child, tmp, siblings) {
+-        child->parent = new_parent;
+-        list_remove(&child->siblings);
+-        list_add(&new_parent->children, &child->siblings);
+-    }
++    // Reparent and notify children before this task can be destroyed.
++    reparent_children(current);
+ 
+     if (exit_tgroup(current)) {
+         // If already marked zombie by do_exit_group force path, skip
+@@ -308,6 +321,7 @@
+             list_for_each_entry_safe(&group->threads, task, task_tmp, group_links) {
+                 if (task != current && !task->exiting) {
+                     task->exiting = true;
++                    reparent_children(task);
+                     list_remove(&task->group_links);
+                     // Release resources so pipes get EOF and memory is freed.
+                     if (task->sighand != NULL) {
+--- a/kernel/getset.c
++++ b/kernel/getset.c
+@@ -14,8 +14,9 @@
+     STRACE("getppid()");
+     pid_t_ ppid;
+     lock(&pids_lock);
+-    if (current->parent != NULL)
+-        ppid = current->parent->pid;
++    struct task *parent = current->group->leader->parent;
++    if (parent != NULL)
++        ppid = parent->tgid;
+     else
+         ppid = 0;
+     unlock(&pids_lock);
+@@ -48,6 +49,8 @@
+         if (uid != current->uid && uid != current->suid)
+             return _EPERM;
+     }
++    if (current->euid != uid)
++        task_clear_parent_death_signal(current);
+     current->euid = uid;
+     return 0;
+ }
+@@ -65,8 +68,11 @@
+ 
+     if (ruid != (uid_t) -1)
+         current->uid = ruid;
+-    if (euid != (uid_t) -1)
++    if (euid != (uid_t) -1) {
++        if (current->euid != euid)
++            task_clear_parent_death_signal(current);
+         current->euid = euid;
++    }
+     if (suid != (uid_t) -1)
+         current->suid = suid;
+     return 0;
+@@ -113,6 +119,8 @@
+         if (gid != current->gid && gid != current->sgid)
+             return _EPERM;
+     }
++    if (current->egid != gid)
++        task_clear_parent_death_signal(current);
+     current->egid = gid;
+     return 0;
+ }
+@@ -130,8 +138,11 @@
+ 
+     if (rgid != (uid_t) -1)
+         current->gid = rgid;
+-    if (egid != (uid_t) -1)
++    if (egid != (uid_t) -1) {
++        if (current->egid != egid)
++            task_clear_parent_death_signal(current);
+         current->egid = egid;
++    }
+     if (sgid != (uid_t) -1)
+         current->sgid = sgid;
+     return 0;
+--- a/kernel/exec.c
++++ b/kernel/exec.c
+@@ -614,6 +614,10 @@
+     fd_close(fd);
+     if (err < 0)
+         return err;
++
++    // Privileged exec must not retain an unprivileged parent-death setting.
++    if (stat.mode & (S_ISUID | S_ISGID))
++        task_clear_parent_death_signal(current);
+ 
+     // setuid/setgid
+     if (stat.mode & S_ISUID) {

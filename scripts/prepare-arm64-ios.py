@@ -118,6 +118,12 @@ def stage(destination: Path) -> None:
 
     shutil.copytree(FORK, destination, symlinks=True,
                     ignore=shutil.ignore_patterns(".git", "build-arm64-linux*", ".cache"))
+    # Official Codex's pipe/PTY spawn hook requires PR_SET_PDEATHSIG.
+    # Apply the kernel semantics to the disposable host build only.
+    for name in ("ios-linuxkit-parent-death-signal.patch", "ios-linuxkit-pty-drain.patch"):
+        patch = PROJECT / "scripts/patches" / name
+        subprocess.run(["git", "apply", "--check", str(patch)], cwd=destination, check=True)
+        subprocess.run(["git", "apply", str(patch)], cwd=destination, check=True)
     poll_path = destination / "fs/poll.c"
     poll_path.write_text(repair_poll_timeouts(poll_path.read_text()))
     decoder = destination / "asbestos/guest-arm64/gen.c"
