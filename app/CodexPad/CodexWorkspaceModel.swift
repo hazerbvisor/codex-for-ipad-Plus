@@ -117,6 +117,8 @@ final class CodexWorkspaceModel: ObservableObject {
     private var didStart = false
     private var isConnecting = false
     private var engineConnectionTask: Task<Void, Never>?
+    private let engineRetryWindow: Duration
+    private let engineRetryDelay: (Int) -> Duration
     private var drafts: [String: String] = [:]
     private var selectionGeneration = 0
     private var directoryGeneration = 0
@@ -128,12 +130,18 @@ final class CodexWorkspaceModel: ObservableObject {
     init(
         rpc: (any CodexRPCServing)? = nil,
         demoMode: Bool = ProcessInfo.processInfo.arguments.contains("--codexpad-demo"),
-        preferences: UserDefaults? = nil
+        preferences: UserDefaults? = nil,
+        engineRetryWindow: Duration = .seconds(120),
+        engineRetryDelay: @escaping (Int) -> Duration = { attempt in
+            .milliseconds(Int64(min(2_000, 350 + attempt * 180)))
+        }
     ) {
         let preferences = preferences ?? (demoMode
             ? UserDefaults(suiteName: "CodexPad.Demo.\(UUID().uuidString)")!
             : .standard)
         self.preferences = preferences
+        self.engineRetryWindow = engineRetryWindow
+        self.engineRetryDelay = engineRetryDelay
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("--codexpad-desktop-mode") {
             desktopModeEnabled = true
@@ -274,11 +282,20 @@ final class CodexWorkspaceModel: ObservableObject {
     private func performEngineConnection() async {
         guard !isConnecting else { return }
         isConnecting = true
-        defer { isConnecting = false }
+        defer {
+            isConnecting = false
+            writeEngineSmokeReport()
+        }
         enginePhase = .starting
         errorBanner = nil
         runtimeRevision = nil
-        for attempt in 1...10 {
+        // Allow for immediate connection refusals while the guest boots. Ten
+        // attempts previously exhausted startup in only about eleven seconds.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: engineRetryWindow)
+        var attempt = 0
+        while clock.now < deadline {
+            attempt += 1
             guard !Task.isCancelled else { rpc.disconnect(); return }
             enginePhase = .connecting(attempt: attempt)
             do {
@@ -297,6 +314,7 @@ final class CodexWorkspaceModel: ObservableObject {
                 enginePhase = .ready
                 appendRuntime("Connected to Codex app-server on guest loopback")
                 await refreshAccount()
+                writeEngineSmokeReport()
                 await refreshModels()
                 await refreshCollaborationModes()
                 await restoreLinkedFolderState()
@@ -304,8 +322,9 @@ final class CodexWorkspaceModel: ObservableObject {
                 return
             } catch {
                 appendRuntime("engine.connect.failed attempt=\(attempt) \(codexDiagnosticFailure(error))")
-                if attempt < 10 {
-                    do { try await Task.sleep(for: .milliseconds(Int64(350 + attempt * 180))) }
+                if clock.now < deadline {
+                    let remaining = max(Duration.zero, clock.now.duration(to: deadline))
+                    do { try await Task.sleep(for: min(engineRetryDelay(attempt), remaining)) }
                     catch { rpc.disconnect(); return }
                 }
             }
@@ -313,6 +332,28 @@ final class CodexWorkspaceModel: ObservableObject {
         let message = "The local Codex service did not become ready. Open Terminal to inspect the guest runtime."
         enginePhase = .offline(message: message)
         errorBanner = message
+    }
+
+    private func writeEngineSmokeReport() {
+        guard ProcessInfo.processInfo.arguments.contains("--codexpad-engine-smoke"),
+              let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        // Disposable simulator validation only. No account, URL, server payload,
+        // credential, or user-file contents are included in the report.
+        let report: [String: Any] = [
+            "ready": enginePhase.isReady,
+            "runtimeRevision": runtimeRevision ?? "",
+            "accountReadable": runtimeLog.contains { $0.hasPrefix("authentication.account.read.ok") },
+            "events": runtimeLog.filter {
+                $0.hasPrefix("engine.connect.") || $0.hasPrefix("runtime.validation.") ||
+                $0 == "protocol.initialize.ok" || $0.hasPrefix("authentication.account.read.")
+            }
+        ]
+        do {
+            let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+            try data.write(to: directory.appendingPathComponent("CodexPadEngineSmoke.json"), options: .atomic)
+        } catch {
+            NSLog("CodexPad engine smoke report could not be written")
+        }
     }
 
     private func verifyRuntimeRevision() async throws {

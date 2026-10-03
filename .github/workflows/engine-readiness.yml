@@ -1,0 +1,43 @@
+name: Packaged iPad engine readiness
+on:
+  push:
+    branches: ["fix/engine-runtime-readiness"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  engine:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CM_BUILD_DIR: ${{ github.workspace }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Run the exact Codemagic scripts, including the live engine gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/codexpad-workflow-parser
+          /tmp/codexpad-workflow-parser/bin/pip install PyYAML==6.0.2
+          /tmp/codexpad-workflow-parser/bin/python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import yaml
+          workflow = yaml.safe_load(Path("codemagic.yaml").read_text())["workflows"]["arm64-ipad-all-in-one"]
+          for step in workflow["scripts"]:
+              print("RUN: " + step["name"], flush=True)
+              subprocess.run(["/bin/bash", "-euo", "pipefail", "-c", step["script"]], check=True)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: Packaged-engine-readiness
+          path: |
+            artifacts/engine-readiness/
+            artifacts/xcodebuild-simulator.log
+            artifacts/xcodebuild-arm64.log
+            artifacts/CodexPad-ARM64-unsigned.ipa

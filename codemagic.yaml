@@ -42,6 +42,9 @@ workflows:
         - pattern: "fix/arm64-meson-link-path"
           include: true
           source: true
+        - pattern: "fix/engine-runtime-readiness"
+          include: true
+          source: true
         - pattern: "main"
           include: true
           source: true
@@ -93,6 +96,7 @@ workflows:
           python3 tests/codexpad/test_ipa_runtime.py
           python3 tests/codexpad/test_runtime_archive.py
           python3 tests/codexpad/test_code_mode_probe.py
+          python3 tests/codexpad/test_engine_readiness.py
           model_bundle=/tmp/CodexPadModelRegression.app/Contents
           mkdir -p "$model_bundle/MacOS" "$model_bundle/Resources"
           cp app/CodexPad/CodexClientRequest.schema.json "$model_bundle/Resources/"
@@ -158,6 +162,7 @@ workflows:
           git submodule update --init --recursive upstream/ios-linuxkit
           python3 tests/codexpad/test_runtime_upgrade.py
           python3 tests/codexpad/test_ios_staging.py
+          python3 tests/codexpad/test_poll_timeouts.py
           python3 scripts/tests/test_arm64_halfword_lanes.py
           python3 scripts/tests/test_arm64_pmull.py
           python3 scripts/prepare-arm64-ios.py --output artifacts/staged-arm64-ios
@@ -191,7 +196,30 @@ workflows:
           (cd artifacts/ipa && zip -qry ../CodexPad-ARM64-unsigned.ipa Payload)
           python3 scripts/verify-ipa-runtime.py artifacts/CodexPad-ARM64-unsigned.ipa "$CODEXPAD_ROOTFS_PATH"
 
+      - name: Verify the packaged engine in a real iPad simulator
+        script: |
+          set -euo pipefail
+          export PATH="$(brew --prefix lld)/bin:$(brew --prefix llvm)/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+          export CODEXPAD_ROOTFS_PATH="$CM_BUILD_DIR/artifacts/codexpad-runtime-arm64.tar.gz"
+          if ! xcrun simctl list runtimes -j | python3 -c 'import json,sys; assert any(r.get("isAvailable") and ".iOS-" in r["identifier"] for r in json.load(sys.stdin)["runtimes"])'; then
+            xcodebuild -downloadPlatform iOS
+          fi
+          xcodebuild -project artifacts/staged-arm64-ios/iSH.xcodeproj \
+            -scheme iSH-ARM64 -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$CM_BUILD_DIR/artifacts/derived-arm64-simulator" \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_ENTITLEMENTS= build 2>&1 | tee artifacts/xcodebuild-simulator.log
+          simulator_app="$CM_BUILD_DIR/artifacts/derived-arm64-simulator/Build/Products/Release-iphonesimulator/CodexPad.app"
+          # Ad-hoc signing is local to the disposable simulator product; the
+          # unsigned device IPA and its single runtime archive stay unchanged.
+          codesign --force --sign - "$simulator_app"
+          python3 scripts/probe-ios-engine.py --app "$simulator_app" \
+            --output artifacts/engine-readiness
+
     artifacts:
+      - artifacts/engine-readiness/**
+      - artifacts/xcodebuild-simulator.log
       - artifacts/xcodebuild-arm64.log
       - artifacts/derived-arm64/**/ninja-build.log
       - artifacts/codex-app-server.provenance.json

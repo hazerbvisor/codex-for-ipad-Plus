@@ -11,6 +11,15 @@ struct RPCRegression {
     }
 
     static func main() async throws {
+        let malformed = CodexRPCClient(endpoint: URL(string: CommandLine.arguments[1] + "/bad-initialize")!)
+        do {
+            try await malformed.connect()
+            preconditionFailure("Expected invalid initialization payload")
+        } catch is DecodingError {
+            check(true, "receive failures preserve the original error instead of generic engine disconnected")
+        }
+        malformed.disconnect()
+
         let rpc = CodexRPCClient(endpoint: URL(string: CommandLine.arguments[1])!)
         try await rpc.connect()
         check(rpc.state == .connected, "Foundation WebSocket initializes the production RPC client")

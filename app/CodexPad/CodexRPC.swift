@@ -115,6 +115,10 @@ final class CodexRPCClient: ObservableObject, CodexRPCServing {
     }
 
     func disconnect() {
+        closeConnection(CodexRPCError(code: nil, message: "Codex engine disconnected"))
+    }
+
+    private func closeConnection(_ error: Error) {
         generation += 1
         receiveTask?.cancel()
         receiveTask = nil
@@ -122,7 +126,6 @@ final class CodexRPCClient: ObservableObject, CodexRPCServing {
         socket = nil
         session?.invalidateAndCancel()
         session = nil
-        let error = CodexRPCError(code: nil, message: "Codex engine disconnected")
         for continuation in pending.values {
             continuation.resume(throwing: error)
         }
@@ -285,7 +288,7 @@ final class CodexRPCClient: ObservableObject, CodexRPCServing {
 
     private func failConnection(_ error: Error) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        disconnect()
+        closeConnection(error)
         state = .failed(message)
     }
 }
